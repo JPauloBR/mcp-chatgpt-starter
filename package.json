@@ -1,0 +1,41 @@
+{
+  "name": "chatgpt-mcp-hello-world",
+  "version": "1.0.0",
+  "description": "Minimal ChatGPT MCP (Model Context Protocol) server with custom widget support. A lightweight starter template for building ChatGPT integrations.",
+  "type": "module",
+  "keywords": [
+    "chatgpt",
+    "mcp",
+    "model-context-protocol",
+    "openai",
+    "chatgpt-plugin",
+    "widgets",
+    "nodejs",
+    "fastify",
+    "starter-template"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_USERNAME/chatgpt-mcp-hello-world.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YOUR_USERNAME/chatgpt-mcp-hello-world/issues"
+  },
+  "homepage": "https://github.com/YOUR_USERNAME/chatgpt-mcp-hello-world#readme",
+  "scripts": {
+    "dev": "node src/server/index.js",
+    "build": "echo 'No build step needed for this minimal setup'"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.19.1",
+    "fastify": "^5.2.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "@types/react": "^19.1.1"
+  }
+}
