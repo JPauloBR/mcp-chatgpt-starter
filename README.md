@@ -1,170 +1,162 @@
-# ChatGPT MCP App - Minimal Standalone Version
+# Apps SDK Examples Gallery
 
-This is a minimal standalone version extracted from your Gadget.dev ChatGPT app, containing only the custom business logic.
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## What's Included
+This repository showcases example UI components to be used with the Apps SDK, as well as example MCP servers that expose a collection of components as tools.
+It is meant to be used as a starting point and source of inspiration to build your own apps for ChatGPT.
 
-- **MCP Server**: Basic Model Context Protocol server for ChatGPT integration
-- **HelloWorld Widget**: Your custom "Hello World JP Version" widget
-- **Tool Registration**: `helloWorld` tool that ChatGPT can invoke
+## MCP + Apps SDK overview
 
-## What's NOT Included (from original Gadget app)
+The Model Context Protocol (MCP) is an open specification for connecting large language model clients to external tools, data, and user interfaces. An MCP server exposes tools that a model can call during a conversation and returns results according to the tool contracts. Those results can include extra metadata—such as inline HTML—that the Apps SDK uses to render rich UI components (widgets) alongside assistant messages.
 
-This minimal version does NOT include:
-- OAuth 2.1 authentication system
-- User management and sessions
-- Database models (User, OAuth Client, OAuth Code, Session)
-- Email verification system
-- Password reset functionality
-- Access control and permissions
-- All UI components (shadcn/ui, Radix UI)
-- React Router routes and layouts
-- Vite build configuration
-- Gadget platform integration
+Within the Apps SDK, MCP keeps the server, model, and UI in sync. By standardizing the wire format, authentication, and metadata, it lets ChatGPT reason about your connector the same way it reasons about built-in tools. A minimal MCP integration for Apps SDK implements three capabilities:
 
-## Project Structure
+1. **List tools** – Your server advertises the tools it supports, including their JSON Schema input/output contracts and optional annotations (for example, `readOnlyHint`).
+2. **Call tools** – When a model selects a tool, it issues a `call_tool` request with arguments that match the user intent. Your server executes the action and returns structured content the model can parse.
+3. **Return widgets** – Alongside structured content, return embedded resources in the response metadata so the Apps SDK can render the interface inline in the Apps SDK client (ChatGPT).
 
-```
-chatgpt-mcp-app/
-├── src/
-│   ├── server/
-│   │   └── index.js          # MCP server with Fastify
-│   └── widgets/
-│       └── HelloWorld.jsx    # Your custom widget component
-├── package.json
-├── .env.example
-├── .gitignore
-└── README.md
-```
+Because the protocol is transport agnostic, you can host the server over Server-Sent Events or streaming HTTP—Apps SDK supports both.
 
-## Setup Instructions
+The MCP servers in this demo highlight how each tool can light up widgets by combining structured payloads with `_meta.openai/outputTemplate` metadata returned from the MCP servers.
 
-### 1. Install Dependencies
+## Repository structure
+
+- `src/` – Source for each widget example.
+- `assets/` – Generated HTML, JS, and CSS bundles after running the build step.
+- `att_server_python/` – Python MCP server that returns the AT&T Products widgets.
+- `solar-system_server_python/` – Python MCP server for the 3D solar system widget.
+- `build-all.mts` – Vite build orchestrator that produces hashed bundles for every widget entrypoint.
+
+## Prerequisites
+
+- Node.js 18+
+- pnpm (recommended) or npm/yarn
+- Python 3.10+ (for the Python MCP server)
+
+## Install dependencies
+
+Clone the repository and install the workspace dependencies:
 
 ```bash
-cd chatgpt-mcp-app
-npm install
+pnpm install
 ```
 
-### 2. Start the Server
+> Using npm or yarn? Install the root dependencies with your preferred client and adjust the commands below accordingly.
+
+## Build the components gallery
+
+The components are bundled into standalone assets that the MCP servers serve as reusable UI resources.
 
 ```bash
-npm run dev
+pnpm run build
 ```
 
-The server will start at `http://localhost:3000`
+This command runs `build-all.mts`, producing versioned `.html`, `.js`, and `.css` files inside `assets/`. Each widget is wrapped with the CSS it needs so you can host the bundles directly or ship them with your own server.
 
-### 3. Test the MCP Endpoint
+To iterate on your components locally, you can also launch the Vite dev server:
 
 ```bash
-curl http://localhost:3000/health
+pnpm run dev
 ```
 
-### 4. Connect to ChatGPT
+## Serve the static assets
 
-To connect this to ChatGPT:
-
-1. **Enable Developer Mode** in ChatGPT
-2. **Create a new connection** in ChatGPT
-3. **Enter your MCP endpoint**: `http://localhost:3000/mcp`
-4. **Test the tool**: Ask ChatGPT "Use my app to say hello!"
-
-**Note**: For ChatGPT to access your local server, you'll need to:
-- Use a tunneling service like [ngrok](https://ngrok.com/) or [localtunnel](https://localtunnel.github.io/www/)
-- Or deploy to a public server
-
-## Using ngrok for Local Development
+If you want to preview the generated bundles without the MCP servers, start the static file server after running a build:
 
 ```bash
-# Install ngrok
-brew install ngrok  # macOS
-# or download from https://ngrok.com/
-
-# Start your server
-npm run dev
-
-# In another terminal, create a tunnel
-ngrok http 3000
-
-# Use the ngrok URL in ChatGPT
-# Example: https://abc123.ngrok.io/mcp
+pnpm run serve
 ```
 
-## Customization
+The assets are exposed at [`http://localhost:4444`](http://localhost:4444) with CORS enabled so that local tooling (including MCP inspectors) can fetch them.
 
-### Adding New Tools
+## Run the MCP servers
 
-Edit `src/server/index.js` and add more tools:
+The repository ships several demo MCP servers that highlight different widget bundles:
 
-```javascript
-mcpServer.registerTool(
-  'myCustomTool',
-  {
-    title: 'My Custom Tool',
-    description: 'Does something custom',
-  },
-  async () => {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'Custom response',
-        },
-      ],
-    };
-  }
-);
+- **AT&T Products (Python)** – AT&T stores, products, and services locator with interactive map
+- **Solar system (Python)** – 3D solar system viewer
+
+Every tool response includes plain text content, structured JSON, and `_meta.openai/outputTemplate` metadata so the Apps SDK can hydrate the matching widget.
+
+### AT&T Products Python server
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r att_server_python/requirements.txt
+uvicorn att_server_python.main:app --port 8000
 ```
 
-### Adding New Widgets
+Or run directly:
 
-1. Create a new widget in `src/widgets/`
-2. Register it as a resource in `src/server/index.js`
-3. Reference it in your tool's `_meta.openai/outputTemplate`
+```bash
+cd att_server_python
+python main.py
+```
 
-## What You'll Need to Add for Production
+### Solar system Python server
 
-If you want to recreate the full Gadget app functionality:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r solar-system_server_python/requirements.txt
+uvicorn solar-system_server_python.main:app --port 8000
+```
 
-1. **Authentication System**
-   - OAuth 2.1 server implementation
-   - User registration/login
-   - Session management
-   - JWT token handling
+You can reuse the same virtual environment for all Python servers—install the dependencies once and run whichever entry point you need.
 
-2. **Database**
-   - PostgreSQL or similar
-   - User model
-   - OAuth models (Client, Code, Token)
-   - Session model
+## Testing in ChatGPT
 
-3. **Email Service**
-   - Email verification
-   - Password reset emails
-   - SMTP configuration
+To add these apps to ChatGPT, enable [developer mode](https://platform.openai.com/docs/guides/developer-mode), and add your apps in Settings > Connectors.
 
-4. **Frontend Framework**
-   - React Router or Remix
-   - UI component library
-   - State management
+To add your local server without deploying it, you can use a tool like [ngrok](https://ngrok.com/) to expose your local server to the internet.
 
-5. **Build System**
-   - Vite configuration
-   - Asset bundling
-   - Environment variable management
+For example, once your mcp servers are running, you can run:
 
-6. **Deployment**
-   - Production server setup
-   - SSL certificates
-   - Domain configuration
-   - Environment management
+```bash
+ngrok http 8000
+```
 
-## Resources
+You will get a public URL that you can use to add your local server to ChatGPT in Settings > Connectors.
 
-- [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)
-- [MCP Documentation](https://modelcontextprotocol.io/docs/getting-started/intro)
-- [Fastify Documentation](https://fastify.dev/)
+For example: `https://<custom_endpoint>.ngrok-free.app/mcp`
+
+Once you add a connector, you can use it in ChatGPT conversations.
+
+You can add your app to the conversation context by selecting it in the "More" options.
+
+![more-chatgpt](https://github.com/user-attachments/assets/26852b36-7f9e-4f48-a515-aebd87173399)
+
+You can then invoke tools by asking something related. For example, for the AT&T Products app, you can ask:
+
+- "Find AT&T stores near me"
+- "Show me AT&T wireless plans"
+- "What cell phones are available at AT&T?"
+- "Where can I get AT&T Fiber internet?"
+- "What do you recommend for me?" or "Show me personalized offers"
+- "Tell me about Internet Backup" or "Do you have Internet Backup offers?"
+
+## Next steps
+
+- Customize the widget data: edit the handlers in `att_server_python/main.py` or the solar system server to fetch data from your systems.
+- Create your own components and add them to the gallery: drop new entries into `src/` and they will be picked up automatically by the build script.
+
+### Deploy your MCP server
+
+You can use the cloud environment of your choice to deploy your MCP server.
+
+Include this in the environment variables:
+
+```
+BASE_URL=https://your-server.com
+```
+
+This will be used to generate the HTML for the widgets so that they can serve static assets from this hosted url.
+
+## Contributing
+
+You are welcome to open issues or submit PRs to improve this app, however, please note that we may not review all suggestions.
 
 ## License
 
-This is a minimal extraction for development purposes. Original code from Gadget.dev template.
+This project is licensed under the MIT License. See [LICENSE](./LICENSE) for details.
