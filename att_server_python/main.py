@@ -16,7 +16,28 @@ from typing import Any, Dict, List
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from dotenv import load_dotenv
+import logging
+import os
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Validate and log SERVER_URL configuration
+SERVER_URL = os.environ.get('SERVER_URL', 'http://localhost:8000')
+logger.info(f"Server URL configured as: {SERVER_URL}")
+if SERVER_URL == 'http://localhost:8000':
+    logger.warning(
+        "SERVER_URL not set in .env file. Using default: http://localhost:8000. "
+        "For production/ngrok, set SERVER_URL=https://your-ngrok-url.ngrok-free.app in .env"
+    )
 
 
 @dataclass(frozen=True)
@@ -33,21 +54,93 @@ class ATTWidget:
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
 
-@lru_cache(maxsize=None)
 def _load_widget_html(component_name: str) -> str:
+    """Load widget HTML from the assets directory with fallback to hashed filenames.
+    
+    Note: No caching to allow SERVER_URL changes without restart.
+    HTML files are small and loaded infrequently (only when widgets are initialized).
+    """
     html_path = ASSETS_DIR / f"{component_name}.html"
     if html_path.exists():
+        logger.debug(f"Loaded widget HTML: {component_name}.html")
         return html_path.read_text(encoding="utf8")
 
     fallback_candidates = sorted(ASSETS_DIR.glob(f"{component_name}-*.html"))
     if fallback_candidates:
-        return fallback_candidates[-1].read_text(encoding="utf8")
+        selected = fallback_candidates[-1]
+        logger.debug(f"Loaded widget HTML with hash: {selected.name}")
+        return selected.read_text(encoding="utf8")
 
     raise FileNotFoundError(
         f'Widget HTML for "{component_name}" not found in {ASSETS_DIR}. '
         "Run `pnpm run build` to generate the assets before starting the server."
     )
 
+
+def _validate_assets_exist() -> None:
+    """Validate that required assets exist at startup."""
+    if not ASSETS_DIR.exists():
+        logger.error(f"Assets directory not found: {ASSETS_DIR}")
+        logger.error("Please run 'pnpm run build' to generate assets before starting the server.")
+        raise FileNotFoundError(f"Assets directory not found: {ASSETS_DIR}")
+    
+    # Check for at least one widget HTML file
+    html_files = list(ASSETS_DIR.glob("*.html"))
+    if not html_files:
+        logger.error(f"No HTML files found in {ASSETS_DIR}")
+        logger.error("Please run 'pnpm run build' to generate assets.")
+        raise FileNotFoundError(f"No HTML assets found in {ASSETS_DIR}")
+    
+    logger.info(f"Found {len(html_files)} HTML asset files in {ASSETS_DIR}")
+
+
+def _modify_html_paths(html: str) -> str:
+    """Modify asset paths to use the Python server's /assets endpoint.
+    
+    This function ensures all asset references (JS, CSS, images) point to the correct
+    server URL, whether running locally or via ngrok/production.
+    """
+    base_url = SERVER_URL.rstrip('/')  # Remove trailing slash
+    assets_url = f'{base_url}/assets/'
+    
+    logger.debug(f"Modifying HTML paths to use assets URL: {assets_url}")
+    
+    # Track replacements for debugging
+    replacements_made = 0
+    
+    # Replace absolute paths
+    if 'src="/' in html or 'href="/' in html:
+        html = html.replace('src="/', f'src="{assets_url}')
+        html = html.replace('href="/', f'href="{assets_url}')
+        replacements_made += 1
+    
+    # Replace localhost:4444 references (dev server)
+    if 'localhost:4444' in html:
+        html = html.replace('http://localhost:4444/', assets_url)
+        html = html.replace('https://localhost:4444/', assets_url)
+        replacements_made += 1
+    
+    # Replace relative paths
+    if 'src="./' in html or 'href="./' in html:
+        html = html.replace('src="./', f'src="{assets_url}')
+        html = html.replace('href="./', f'href="{assets_url}')
+        replacements_made += 1
+    
+    # Handle edge case: srcset attributes for responsive images
+    if 'srcset="' in html:
+        # Basic handling - may need enhancement for complex srcset
+        html = html.replace('srcset="/', f'srcset="{assets_url}')
+        replacements_made += 1
+    
+    if replacements_made > 0:
+        logger.debug(f"Made {replacements_made} types of path replacements")
+    else:
+        logger.warning("No path replacements made - HTML may already have absolute URLs or be malformed")
+    
+    return html
+
+# Validate assets before loading widgets
+_validate_assets_exist()
 
 widgets: List[ATTWidget] = [
     ATTWidget(
@@ -56,7 +149,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-store-locator.html",
         invoking="Locating AT&T stores and services",
         invoked="Found AT&T locations",
-        html=_load_widget_html("att-store-finder"),
+        html=_modify_html_paths(_load_widget_html("att-store-finder")),
         response_text="Displayed AT&T store locations with available products and services!",
     ),
     ATTWidget(
@@ -65,7 +158,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-products-carousel.html",
         invoking="Loading AT&T products",
         invoked="Products loaded",
-        html=_load_widget_html("att-products-carousel"),
+        html=_modify_html_paths(_load_widget_html("att-products-carousel")),
         response_text="Displayed AT&T products carousel with cell phones, plans, and accessories!",
     ),
     ATTWidget(
@@ -74,7 +167,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-services-gallery.html",
         invoking="Loading AT&T services",
         invoked="Services loaded",
-        html=_load_widget_html("att-products-albums"),
+        html=_modify_html_paths(_load_widget_html("att-products-albums")),
         response_text="Displayed AT&T services including Wireless, Fiber, and Internet Air!",
     ),
     ATTWidget(
@@ -83,7 +176,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-plans-list.html",
         invoking="Loading plan options",
         invoked="Plans loaded",
-        html=_load_widget_html("att-products-list"),
+        html=_modify_html_paths(_load_widget_html("att-products-list")),
         response_text="Displayed AT&T wireless plans with pricing and features!",
     ),
     ATTWidget(
@@ -92,7 +185,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-for-you.html",
         invoking="Loading personalized recommendations",
         invoked="Recommendations loaded",
-        html=_load_widget_html("att-for-you"),
+        html=_modify_html_paths(_load_widget_html("att-for-you")),
         response_text="Displayed personalized AT&T offers and recommendations tailored to your account!",
     ),
     ATTWidget(
@@ -101,8 +194,17 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-internet-backup-offer.html",
         invoking="Loading Internet Backup offer",
         invoked="Offer loaded",
-        html=_load_widget_html("att-internet-backup-offer"),
+        html=_modify_html_paths(_load_widget_html("att-internet-backup-offer")),
         response_text="Displayed Internet Backup offer - stay connected even during outages!",
+    ),
+    ATTWidget(
+        identifier="att-fiber-coverage-checker",
+        title="Check Fiber & Internet Air Availability",
+        template_uri="ui://widget/att-fiber-coverage-checker.html",
+        invoking="Checking AT&T Fiber and Internet Air availability",
+        invoked="Coverage checked",
+        html=_modify_html_paths(_load_widget_html("att-fiber-coverage-checker")),
+        response_text="Displayed AT&T Fiber and Internet Air coverage map with availability at your location!",
     )
 ]
 
@@ -122,6 +224,11 @@ class ATTProductInput(BaseModel):
         alias="productType",
         description="Type of AT&T product or service (e.g., 'cell phones', 'wireless plans', 'fiber internet', '5g coverage').",
     )
+    address: str | None = Field(
+        None,
+        alias="address",
+        description="Customer's address for checking service availability (optional). Include full address with street, city, state, and ZIP code.",
+    )
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -138,6 +245,10 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
         "productType": {
             "type": "string",
             "description": "Type of AT&T product or service (e.g., 'cell phones', 'wireless plans', 'fiber internet', '5g coverage').",
+        },
+        "address": {
+            "type": "string",
+            "description": "Customer's address for checking service availability (optional). Include full address with street, city, state, and ZIP code.",
         }
     },
     "required": ["productType"],
@@ -275,6 +386,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         )
 
     product_type = payload.product_type
+    address = payload.address
     widget_resource = _embedded_widget_resource(widget)
     meta: Dict[str, Any] = {
         "openai.com/widget": widget_resource.model_dump(mode="json"),
@@ -285,6 +397,11 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         "openai/resultCanProduceWidget": True,
     }
 
+    # Build structured content
+    structured_content: Dict[str, Any] = {"productType": product_type}
+    if address:
+        structured_content["address"] = address
+
     return types.ServerResult(
         types.CallToolResult(
             content=[
@@ -293,7 +410,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
                     text=widget.response_text,
                 )
             ],
-            structuredContent={"productType": product_type},
+            structuredContent=structured_content,
             _meta=meta
         )
     )
@@ -305,18 +422,74 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 
 app = mcp.streamable_http_app()
 
-try:
-    from starlette.middleware.cors import CORSMiddleware
+# Add request logging middleware for debugging
+@app.middleware("http")
+async def log_requests(request, call_next):
+    # Log incoming requests to help debug ChatGPT integration
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    logger.debug(f"Headers: {dict(request.headers)}")
+    
+    response = await call_next(request)
+    
+    logger.info(f"Response status: {response.status_code}")
+    return response
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-        allow_credentials=False,
-    )
-except Exception:
-    pass
+# Add middleware for tunnel compatibility (ngrok, Cloudflare, etc.)
+@app.middleware("http")
+async def add_tunnel_compatibility_headers(request, call_next):
+    response = await call_next(request)
+    
+    # ngrok compatibility
+    response.headers["ngrok-skip-browser-warning"] = "true"
+    
+    # Cloudflare Tunnel compatibility
+    # Add keep-alive and streaming headers
+    response.headers["Connection"] = "keep-alive"
+    response.headers["X-Accel-Buffering"] = "no"  # Disable buffering
+    
+    # Handle Cloudflare's specific requirements for SSE
+    if "text/event-stream" in response.headers.get("content-type", ""):
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Accel-Buffering"] = "no"
+    
+    # Remove Cloudflare telemetry headers that might trigger security validation
+    # Note: These are added by Cloudflare CDN, so this only affects direct server responses
+    headers_to_remove = ["report-to", "nel", "cf-ray", "cf-cache-status"]
+    for header in headers_to_remove:
+        if header in response.headers:
+            del response.headers[header]
+    
+    return response
+
+# Mount the static files directory
+app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
+    expose_headers=["*"],  # Allow Cloudflare to expose all headers
+)
+
+# Add health check endpoint for tunnel validation
+# Note: Using Starlette's add_route (not FastAPI decorator)
+from starlette.responses import JSONResponse
+from starlette.requests import Request
+
+async def health_check(request: Request):
+    """Health check endpoint for monitoring and tunnel validation."""
+    return JSONResponse({
+        "status": "healthy",
+        "service": "att-mcp-server",
+        "assets_available": ASSETS_DIR.exists(),
+        "widgets_count": len(widgets),
+        "server_url": SERVER_URL
+    })
+
+app.add_route("/health", health_check, methods=["GET"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,154 @@
+{
+  "coverageZones": {
+    "fiber": [
+      {
+        "id": "sf-downtown",
+        "name": "San Francisco Downtown",
+        "center": [-122.4194, 37.7749],
+        "radius": 0.015,
+        "type": "circle"
+      },
+      {
+        "id": "sf-mission",
+        "name": "Mission District",
+        "center": [-122.4194, 37.7599],
+        "radius": 0.012,
+        "type": "circle"
+      },
+      {
+        "id": "sf-soma",
+        "name": "SoMa",
+        "center": [-122.3991, 37.7858],
+        "radius": 0.01,
+        "type": "circle"
+      }
+    ],
+    "internetAir": [
+      {
+        "id": "sf-bay-area",
+        "name": "San Francisco Bay Area",
+        "center": [-122.4194, 37.7749],
+        "radius": 0.05,
+        "type": "circle"
+      },
+      {
+        "id": "sf-extended",
+        "name": "SF Extended Coverage",
+        "center": [-122.3991, 37.7858],
+        "radius": 0.04,
+        "type": "circle"
+      }
+    ]
+  },
+  "mockAddresses": [
+    {
+      "address": "4670 Avocet Dr, Peachtree Corners, GA 30092",
+      "coords": [-84.2191, 33.9698],
+      "fiber": true,
+      "internetAir": true,
+      "plans": ["fiber-1gig", "fiber-500mbps", "internet-air"]
+    },
+    {
+      "address": "1 Market St, San Francisco, CA 94105",
+      "coords": [-122.3959, 37.7939],
+      "fiber": true,
+      "internetAir": true,
+      "plans": ["fiber-5gig", "fiber-2gig", "fiber-1gig", "internet-air"]
+    },
+    {
+      "address": "2300 Mission St, San Francisco, CA 94110",
+      "coords": [-122.4194, 37.7599],
+      "fiber": true,
+      "internetAir": true,
+      "plans": ["fiber-2gig", "fiber-1gig", "internet-air"]
+    },
+    {
+      "address": "1700 Haight St, San Francisco, CA 94117",
+      "coords": [-122.4477, 37.7699],
+      "fiber": false,
+      "internetAir": true,
+      "plans": ["internet-air"]
+    },
+    {
+      "address": "555 California St, San Francisco, CA 94104",
+      "coords": [-122.4015, 37.7946],
+      "fiber": true,
+      "internetAir": true,
+      "plans": ["fiber-5gig", "fiber-2gig", "fiber-1gig", "internet-air"]
+    }
+  ],
+  "plans": {
+    "fiber-5gig": {
+      "id": "fiber-5gig",
+      "name": "AT&T Internet 5000",
+      "speed": "Up to 5 GIG speed",
+      "price": 225,
+      "originalPrice": 250,
+      "type": "fiber",
+      "features": [
+        "5 Gig speeds",
+        "Unlimited data",
+        "No equipment fees",
+        "Free professional installation"
+      ]
+    },
+    "fiber-2gig": {
+      "id": "fiber-2gig",
+      "name": "AT&T Internet 2000",
+      "speed": "Up to 2 GIG speed",
+      "price": 150,
+      "originalPrice": 175,
+      "type": "fiber",
+      "features": [
+        "2 Gig speeds",
+        "Unlimited data",
+        "Wi-Fi 6 gateway",
+        "Free installation"
+      ]
+    },
+    "fiber-1gig": {
+      "id": "fiber-1gig",
+      "name": "AT&T Internet 1000",
+      "speed": "Up to 1 GIG speed",
+      "price": 55,
+      "originalPrice": 90,
+      "type": "fiber",
+      "features": [
+        "1 Gig download & upload speeds",
+        "Unlimited data",
+        "No annual contract",
+        "99.9% reliability"
+      ],
+      "badge": "Save $25/mo. when you order today"
+    },
+    "fiber-500mbps": {
+      "id": "fiber-500mbps",
+      "name": "AT&T Internet 500",
+      "speed": "500Mbps speed",
+      "price": 65,
+      "originalPrice": 75,
+      "type": "fiber",
+      "features": [
+        "500Mbps download speeds",
+        "Unlimited data",
+        "Wi-Fi 6 gateway",
+        "Self-setup available"
+      ]
+    },
+    "internet-air": {
+      "id": "internet-air",
+      "name": "AT&T Internet Air",
+      "speed": "Up to 350Mbps speed",
+      "price": 60,
+      "originalPrice": 70,
+      "type": "wireless",
+      "features": [
+        "Wireless 5G home internet",
+        "No data caps",
+        "Easy self-setup",
+        "No annual contract"
+      ],
+      "badge": "Great reward card offer: $50"
+    }
+  }
+}
