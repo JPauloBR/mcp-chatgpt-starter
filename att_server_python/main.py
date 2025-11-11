@@ -387,6 +387,12 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
 
     product_type = payload.product_type
     address = payload.address
+    
+    logger.info(f"[Address Debug] Tool called: {req.params.name}")
+    logger.info(f"[Address Debug] Product type: {product_type}")
+    logger.info(f"[Address Debug] Address received: {address}")
+    logger.info(f"[Address Debug] Raw arguments: {arguments}")
+    
     widget_resource = _embedded_widget_resource(widget)
     meta: Dict[str, Any] = {
         "openai.com/widget": widget_resource.model_dump(mode="json"),
@@ -401,6 +407,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
     structured_content: Dict[str, Any] = {"productType": product_type}
     if address:
         structured_content["address"] = address
+        logger.info(f"[Address Debug] Added address to structuredContent: {address}")
 
     return types.ServerResult(
         types.CallToolResult(
@@ -463,6 +470,22 @@ async def add_tunnel_compatibility_headers(request, call_next):
 
 # Mount the static files directory
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+
+# Add no-cache middleware for development (prevents Cloudflare caching)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        # Add no-cache headers for all responses
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+app.add_middleware(NoCacheMiddleware)
 
 # Configure CORS
 app.add_middleware(

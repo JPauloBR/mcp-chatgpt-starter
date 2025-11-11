@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import AddressForm from "./AddressForm";
 import CoverageMap from "./CoverageMap";
 import AvailabilityResults from "./AvailabilityResults";
 import coverageData from "./coverage-data.json";
 import { useOpenAiGlobal } from "../use-openai-global";
 import { useMaxHeight } from "../use-max-height";
-import { Maximize2 } from "lucide-react";
+import { Maximize2, ClipboardList } from "lucide-react";
 
 // Geocode mock addresses or use provided coordinates
 function geocodeAddress(address) {
@@ -43,29 +43,53 @@ export default function App() {
   const [currentView, setCurrentView] = useState("loading"); // "loading", "input", "map"
   const [addressData, setAddressData] = useState(null);
   const [showResults, setShowResults] = useState(false);
+  const [hasViewedResults, setHasViewedResults] = useState(false);
 
   useEffect(() => {
-    // Check for pre-provided address from ChatGPT
-    if (typeof window !== "undefined" && window.oai?.widget?.getState) {
-      const state = window.oai.widget.getState();
-      setWidgetState(state || {});
+    // Check for pre-provided address from ChatGPT using window.openai.toolInput
+    let attempts = 0;
+    const maxAttempts = 10;
+    const retryDelay = 100; // ms
+    
+    const checkForState = () => {
+      attempts++;
+      console.log(`[Address Debug] Attempt ${attempts}/${maxAttempts}: Checking for toolInput...`);
+      console.log('[Address Debug] window.openai exists:', typeof window !== "undefined" && !!window.openai);
+      console.log('[Address Debug] window.openai.toolInput:', window.openai?.toolInput);
       
-      // If address was provided, skip to map view
-      if (state?.address) {
-        const geocoded = geocodeAddress(state.address);
-        setAddressData({
-          address: state.address,
-          ...geocoded,
-        });
-        setCurrentView("map");
-        // Show results immediately when address is pre-provided
-        setTimeout(() => setShowResults(true), 500);
+      if (typeof window !== "undefined" && window.openai?.toolInput) {
+        const toolInput = window.openai.toolInput;
+        console.log('[Address Debug] ✅ Tool input received:', toolInput);
+        setWidgetState(toolInput || {});
+        
+        // If address was provided, skip to map view
+        if (toolInput.address) {
+          console.log('[Address Debug] ✅ Address found in toolInput:', toolInput.address);
+          const geocoded = geocodeAddress(toolInput.address);
+          console.log('[Address Debug] Geocoded result:', geocoded);
+          setAddressData({
+            address: toolInput.address,
+            ...geocoded,
+          });
+          setCurrentView("map");
+          // Show results immediately when address is pre-provided
+          setTimeout(() => setShowResults(true), 500);
+        } else {
+          console.log('[Address Debug] No address in toolInput, showing input form');
+          setCurrentView("input");
+        }
+      } else if (attempts < maxAttempts) {
+        // Tool input not ready yet, retry
+        console.log(`[Address Debug] ⏳ Tool input not ready, retrying in ${retryDelay}ms...`);
+        setTimeout(checkForState, retryDelay);
       } else {
+        // Max attempts reached, show input form
+        console.log('[Address Debug] ❌ Max attempts reached, showing input form');
         setCurrentView("input");
       }
-    } else {
-      setCurrentView("input");
-    }
+    };
+    
+    checkForState();
   }, []);
 
   const handleAddressSubmit = (address) => {
@@ -78,6 +102,13 @@ export default function App() {
     // Show results after a brief delay to let map render
     setTimeout(() => setShowResults(true), 800);
   };
+
+  // Track when results have been viewed at least once
+  useEffect(() => {
+    if (showResults) {
+      setHasViewedResults(true);
+    }
+  }, [showResults]);
 
   const handleMapLoad = useCallback((map) => {
     // Fit bounds to show coverage areas and location
@@ -208,17 +239,24 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Info bar (bottom) */}
-        {displayMode === "fullscreen" && !showResults && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
-            <button
+        {/* Floating Action Button - Re-open Results Panel */}
+        <AnimatePresence>
+          {hasViewedResults && !showResults && addressData && (
+            <motion.button
+              key="fab-button"
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
               onClick={() => setShowResults(true)}
-              className="bg-white hover:bg-gray-50 text-gray-900 font-medium px-6 py-3 rounded-full shadow-lg ring ring-black/5 transition-colors"
+              className="absolute bottom-4 right-4 z-30 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-full shadow-xl hover:shadow-2xl transition-all flex items-center space-x-2"
+              aria-label="View available plans"
             >
-              View available plans
-            </button>
-          </div>
-        )}
+              <ClipboardList className="h-5 w-5" />
+              <span>View Plans</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
