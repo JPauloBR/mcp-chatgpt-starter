@@ -1,0 +1,96 @@
+{
+  "mockAccounts": {
+    "authenticated": [
+      {
+        "accountId": "436156947789",
+        "type": "wireless",
+        "label": "Wireless",
+        "balance": 0.00,
+        "dueDate": "2025-12-11",
+        "paymentMethods": [
+          {
+            "id": "pm-1",
+            "type": "credit-card",
+            "brand": "Apple Card",
+            "last4": "4162",
+            "default": true
+          }
+        ]
+      },
+      {
+        "accountId": "338086151",
+        "type": "internet",
+        "label": "Internet",
+        "balance": 89.99,
+        "dueDate": "2025-11-20",
+        "paymentMethods": []
+      }
+    ],
+    "unauthenticated": {
+      "4705959137": {
+        "type": "wireless",
+        "balance": 125.50,
+        "zipCode": "30092"
+      },
+      "338086151": {
+        "type": "internet",
+        "balance": 89.99,
+        "zipCode": "30092"
+      }
+    }
+  },
+  "serviceTypes": [
+    {
+      "id": "wireless",
+      "name": "AT&T Wireless",
+      "icon": "signal",
+      "identifierLabel": "AT&T Wireless or account number",
+      "identifierPlaceholder": "4705959137"
+    },
+    {
+      "id": "internet",
+      "name": "Internet / Home Phone",
+      "icon": "router",
+      "identifierLabel": "Billing Account Number (BAN)",
+      "identifierPlaceholder": "338086151"
+    },
+    {
+      "id": "prepaid",
+      "name": "AT&T Prepaid",
+      "icon": "credit-card",
+      "identifierLabel": "Prepaid number",
+      "identifierPlaceholder": "Enter prepaid number"
+    },
+    {
+      "id": "uverse",
+      "name": "U-verse®",
+      "icon": "monitor",
+      "identifierLabel": "Account number",
+      "identifierPlaceholder": "Enter account number"
+    },
+    {
+      "id": "directv",
+      "name": "DIRECTV",
+      "icon": "tv",
+      "identifierLabel": "Account number",
+      "identifierPlaceholder": "Enter account number"
+    },
+    {
+      "id": "business",
+      "name": "Business account",
+      "icon": "briefcase",
+      "identifierLabel": "Business account number",
+      "identifierPlaceholder": "Enter account number"
+    }
+  ],
+  "paymentMethods": {
+    "creditCard": {
+      "brands": ["Visa", "Mastercard", "American Express", "Discover"],
+      "fields": ["cardNumber", "expirationDate", "cvv", "cardholderName", "billingZip"]
+    },
+    "bankAccount": {
+      "types": ["Checking", "Savings"],
+      "fields": ["routingNumber", "accountNumber", "accountHolderName"]
+    }
+  }
+}

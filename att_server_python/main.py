@@ -205,6 +205,15 @@ widgets: List[ATTWidget] = [
         invoked="Coverage checked",
         html=_modify_html_paths(_load_widget_html("att-fiber-coverage-checker")),
         response_text="Displayed AT&T Fiber and Internet Air coverage map with availability at your location!",
+    ),
+    ATTWidget(
+        identifier="att-make-payment",
+        title="Make a Payment",
+        template_uri="ui://widget/att-make-payment.html",
+        invoking="Opening secure payment interface",
+        invoked="Payment interface ready",
+        html=_modify_html_paths(_load_widget_html("att-payment")),
+        response_text="Opening AT&T payment interface. You can securely enter your account information and payment details in the form below.",
     )
 ]
 
@@ -222,7 +231,7 @@ class ATTProductInput(BaseModel):
     product_type: str = Field(
         ...,
         alias="productType",
-        description="Type of AT&T product or service (e.g., 'cell phones', 'wireless plans', 'fiber internet', '5g coverage').",
+        description="Type of AT&T product or service (e.g., 'cell phones', 'wireless plans', 'fiber internet', '5g coverage', 'payment').",
     )
     address: str | None = Field(
         None,
@@ -255,6 +264,24 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+# Separate schema for payment tool - optional context hints only (never ask user for these)
+PAYMENT_TOOL_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "paymentFlow": {
+            "type": "string",
+            "enum": ["authenticated", "guest"],
+            "description": "OPTIONAL: Infer from context if user wants authenticated ('logged in', 'my account') or guest payment ('without signing in', 'not logged in'). DO NOT ASK USER - infer from their message or omit if unclear.",
+        },
+        "serviceType": {
+            "type": "string",
+            "enum": ["wireless", "internet", "prepaid", "uverse", "directv", "business"],
+            "description": "OPTIONAL: Infer service type from context if user mentions 'wireless', 'internet', 'fiber', 'prepaid', etc. DO NOT ASK USER - infer from their message or omit if unclear.",
+        }
+    },
+    "additionalProperties": False,
+}
+
 
 def _resource_description(widget: ATTWidget) -> str:
     return f"{widget.title} widget markup"
@@ -284,22 +311,32 @@ def _embedded_widget_resource(widget: ATTWidget) -> types.EmbeddedResource:
 
 @mcp._mcp_server.list_tools()
 async def _list_tools() -> List[types.Tool]:
-    return [
-        types.Tool(
-            name=widget.identifier,
-            title=widget.title,
-            description=widget.title,
-            inputSchema=deepcopy(TOOL_INPUT_SCHEMA),
-            _meta=_tool_meta(widget),
-            # To disable the approval prompt for the tools
-            annotations={
-                "destructiveHint": False,
-                "openWorldHint": False,
-                "readOnlyHint": True,
-            },
+    tools = []
+    for widget in widgets:
+        # Use specific schema for payment tool
+        if widget.identifier == "att-make-payment":
+            schema = deepcopy(PAYMENT_TOOL_SCHEMA)
+            description = "Open AT&T payment interface. IMPORTANT: Do NOT ask user for account numbers, phone numbers, or ZIP codes - these will be collected securely in the widget. You may optionally infer 'paymentFlow' (authenticated vs guest) and 'serviceType' from the user's message context, but NEVER prompt for these - only include if clearly implied in their request."
+        else:
+            schema = deepcopy(TOOL_INPUT_SCHEMA)
+            description = widget.title
+        
+        tools.append(
+            types.Tool(
+                name=widget.identifier,
+                title=widget.title,
+                description=description,
+                inputSchema=schema,
+                _meta=_tool_meta(widget),
+                # To disable the approval prompt for the tools
+                annotations={
+                    "destructiveHint": False,
+                    "openWorldHint": False,
+                    "readOnlyHint": True,
+                },
+            )
         )
-        for widget in widgets
-    ]
+    return tools
 
 
 @mcp._mcp_server.list_resources()
@@ -370,28 +407,47 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         )
 
     arguments = req.params.arguments or {}
-    try:
-        payload = ATTProductInput.model_validate(arguments)
-    except ValidationError as exc:
-        return types.ServerResult(
-            types.CallToolResult(
-                content=[
-                    types.TextContent(
-                        type="text",
-                        text=f"Input validation error: {exc.errors()}",
-                    )
-                ],
-                isError=True,
-            )
-        )
-
-    product_type = payload.product_type
-    address = payload.address
     
-    logger.info(f"[Address Debug] Tool called: {req.params.name}")
-    logger.info(f"[Address Debug] Product type: {product_type}")
-    logger.info(f"[Address Debug] Address received: {address}")
-    logger.info(f"[Address Debug] Raw arguments: {arguments}")
+    logger.info(f"[Tool Debug] Tool called: {req.params.name}")
+    logger.info(f"[Tool Debug] Raw arguments: {arguments}")
+    
+    # Payment tool has optional context parameters (not user input)
+    if widget.identifier == "att-make-payment":
+        structured_content: Dict[str, Any] = {}
+        # Pass optional context hints to widget if provided
+        if "paymentFlow" in arguments:
+            structured_content["paymentFlow"] = arguments["paymentFlow"]
+            logger.info(f"[Tool Debug] Payment flow hint: {arguments['paymentFlow']}")
+        if "serviceType" in arguments:
+            structured_content["serviceType"] = arguments["serviceType"]
+            logger.info(f"[Tool Debug] Service type hint: {arguments['serviceType']}")
+    else:
+        # Other tools may have productType and address
+        try:
+            payload = ATTProductInput.model_validate(arguments)
+        except ValidationError as exc:
+            return types.ServerResult(
+                types.CallToolResult(
+                    content=[
+                        types.TextContent(
+                            type="text",
+                            text=f"Input validation error: {exc.errors()}",
+                        )
+                    ],
+                    isError=True,
+                )
+            )
+
+        product_type = payload.product_type
+        address = payload.address
+        
+        logger.info(f"[Tool Debug] Product type: {product_type}")
+        logger.info(f"[Tool Debug] Address received: {address}")
+        
+        structured_content = {"productType": product_type}
+        if address:
+            structured_content["address"] = address
+            logger.info(f"[Tool Debug] Added address to structuredContent: {address}")
     
     widget_resource = _embedded_widget_resource(widget)
     meta: Dict[str, Any] = {
@@ -402,12 +458,6 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         "openai/widgetAccessible": True,
         "openai/resultCanProduceWidget": True,
     }
-
-    # Build structured content
-    structured_content: Dict[str, Any] = {"productType": product_type}
-    if address:
-        structured_content["address"] = address
-        logger.info(f"[Address Debug] Added address to structuredContent: {address}")
 
     return types.ServerResult(
         types.CallToolResult(

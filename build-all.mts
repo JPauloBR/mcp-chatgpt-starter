@@ -24,6 +24,7 @@ const targets: string[] = [
   "att-for-you",
   "att-internet-backup-offer",
   "att-fiber-coverage-checker",
+  "att-payment",
 ];
 const builtNames: string[] = [];
 
