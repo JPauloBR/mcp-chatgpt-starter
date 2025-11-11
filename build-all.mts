@@ -20,6 +20,7 @@ const targets: string[] = [
   "att-store-finder",
   "att-products-carousel",
   "att-products-list",
+  "att-plans-list",
   "att-products-albums",
   "att-for-you",
   "att-internet-backup-offer",
@@ -182,8 +183,8 @@ for (const name of builtNames) {
   const html = `<!doctype html>
 <html>
 <head>
-<script type="module" src="${normalizedBaseUrl}/${name}-${h}.js"></script>
-<link rel="stylesheet" href="${normalizedBaseUrl}/${name}-${h}.css">
+<script type="module" src="${normalizedBaseUrl}/assets/${name}-${h}.js"></script>
+<link rel="stylesheet" href="${normalizedBaseUrl}/assets/${name}-${h}.css">
 </head>
 <body>
 <div id="${name}-root"></div>

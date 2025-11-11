@@ -1,0 +1,189 @@
+{
+  "plans": [
+    {
+      "id": "unlimited-premium-pl",
+      "name": "AT&T Unlimited Premium",
+      "tier": "PL",
+      "badge": "Signature Discount",
+      "price": "$40.99",
+      "originalPrice": "$50.99",
+      "priceNote": "/mo. per line when you get 4 lines",
+      "features": [
+        {
+          "icon": "signal",
+          "title": "Unlimited talk, text, & high-speed data that can't slow down based on how much you use",
+          "description": null
+        },
+        {
+          "icon": "shield",
+          "title": "AT&T ActiveArmor advanced security",
+          "description": "Free app to monitor the dark web for personal information, help block harmful websites, and more."
+        },
+        {
+          "icon": "wifi",
+          "title": "60GB hotspot data per line per month",
+          "description": null
+        },
+        {
+          "icon": "globe",
+          "title": "Unlimited talk, text & high-speed data in 20 Latin American countries",
+          "description": "No extra cost."
+        },
+        {
+          "icon": "tv",
+          "title": "4K UHD streaming available",
+          "description": null
+        },
+        {
+          "icon": "award",
+          "title": "AT&T Signature Program members",
+          "description": "With the Signature Program, you'll save $10/mo. or $120 per year, per line, when you get up to 5 lines."
+        }
+      ],
+      "category": "Premium"
+    },
+    {
+      "id": "unlimited-extra-el",
+      "name": "AT&T Unlimited Extra",
+      "tier": "EL",
+      "badge": null,
+      "price": "$40.99",
+      "originalPrice": null,
+      "priceNote": "/mo. per line when you get 4 lines",
+      "features": [
+        {
+          "icon": "signal",
+          "title": "Unlimited talk, text, data + 75GB of high-speed data",
+          "description": "After 75GB, AT&T may temporarily slow data speeds if the network is busy."
+        },
+        {
+          "icon": "shield",
+          "title": "AT&T ActiveArmor advanced security",
+          "description": "Free app with Spam Call Blocking, Public Wi-Fi Protection, Identity Monitoring, and more."
+        },
+        {
+          "icon": "wifi",
+          "title": "30GB hotspot data per line per month",
+          "description": null
+        },
+        {
+          "icon": "tv",
+          "title": "Standard streaming available",
+          "description": null
+        }
+      ],
+      "category": "Standard"
+    },
+    {
+      "id": "unlimited-starter-sl",
+      "name": "AT&T Unlimited Starter",
+      "tier": "SL",
+      "badge": null,
+      "price": "$35.99",
+      "originalPrice": null,
+      "priceNote": "/mo. per line when you get 4 lines",
+      "features": [
+        {
+          "icon": "signal",
+          "title": "Unlimited talk, text & data",
+          "description": "AT&T may temporarily slow data speeds if the network is busy."
+        },
+        {
+          "icon": "shield",
+          "title": "AT&T ActiveArmor security",
+          "description": "Free app with Spam Call Blocking and more."
+        },
+        {
+          "icon": "wifi",
+          "title": "5GB hotspot data per line per month",
+          "description": null
+        },
+        {
+          "icon": "tv",
+          "title": "Standard streaming available",
+          "description": null
+        }
+      ],
+      "category": "Standard"
+    },
+    {
+      "id": "value-plus-vl",
+      "name": "AT&T Value Plus",
+      "tier": "VL",
+      "badge": null,
+      "price": "$30.99",
+      "originalPrice": null,
+      "priceNote": "/mo. per line when you get 4 lines",
+      "features": [
+        {
+          "icon": "signal",
+          "title": "Unlimited talk, text & data",
+          "description": "AT&T may temporarily slow data speeds if the network is busy."
+        },
+        {
+          "icon": "shield",
+          "title": "AT&T ActiveArmor security",
+          "description": "Free app to help block annoying spam calls and texts plus more."
+        },
+        {
+          "icon": "5g",
+          "title": "5G access included",
+          "description": null
+        },
+        {
+          "icon": "globe",
+          "title": "Unlimited talk, text and data in and between the US, Canada, and Mexico",
+          "description": "2G off net data speeds may apply."
+        },
+        {
+          "icon": "tv",
+          "title": "Standard-definition streaming",
+          "description": null
+        },
+        {
+          "icon": "message",
+          "title": "Unlimited texting from U.S. to 200+ countries",
+          "description": null
+        }
+      ],
+      "category": "Value"
+    },
+    {
+      "id": "4gb-plan",
+      "name": "AT&T 4GB",
+      "tier": "SM",
+      "badge": null,
+      "price": "$40.00",
+      "originalPrice": null,
+      "priceNote": "/mo. per line when you get 4 lines",
+      "features": [
+        {
+          "icon": "signal",
+          "title": "Unlimited talk, text, and 4GB of data per line in the US, Canada, and Mexico",
+          "description": "Roaming may be at 2GB speeds."
+        },
+        {
+          "icon": "shield",
+          "title": "AT&T ActiveArmor security",
+          "description": "Free app to help block annoying spam calls and texts plus more."
+        },
+        {
+          "icon": "wifi",
+          "title": "Mobile hotspot",
+          "description": null
+        },
+        {
+          "icon": "tv",
+          "title": "Standard-definition streaming",
+          "description": null
+        },
+        {
+          "icon": "message",
+          "title": "Unlimited texting from U.S. to 200+ countries",
+          "description": null
+        }
+      ],
+      "category": "Limited Data"
+    }
+  ]
+}

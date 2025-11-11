@@ -176,7 +176,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-plans-list.html",
         invoking="Loading plan options",
         invoked="Plans loaded",
-        html=_modify_html_paths(_load_widget_html("att-products-list")),
+        html=_modify_html_paths(_load_widget_html("att-plans-list")),
         response_text="Displayed AT&T wireless plans with pricing and features!",
     ),
     ATTWidget(
