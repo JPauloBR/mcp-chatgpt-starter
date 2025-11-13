@@ -714,6 +714,7 @@ if OAUTH_ENABLED:
                     "scopes_str": " ".join(scopes),
                     "scope_descriptions": scope_descriptions,
                     "action_url": "/oauth/authorize/approve",
+                    "user_email": None,  # No authenticated user in this flow
                 }
             )
         except Exception as e:
