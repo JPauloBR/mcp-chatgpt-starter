@@ -19,12 +19,21 @@ Because the protocol is transport agnostic, you can host the server over Server-
 
 The MCP servers in this demo highlight how each tool can light up widgets by combining structured payloads with `_meta.openai/outputTemplate` metadata returned from the MCP servers.
 
+## Features
+
+✨ **Rich UI Widgets** – Interactive components for AT&T products, services, and store locators  
+🔐 **OAuth 2.0 Authentication** – Built-in OAuth provider for secure access control  
+🚀 **Production Ready** – Cloudflare tunnel support with persistent domains  
+📱 **Responsive Design** – Modern, mobile-friendly UI components  
+🛠️ **Developer Friendly** – Easy setup with comprehensive documentation  
+
 ## Repository structure
 
 - `src/` – Source for each widget example.
 - `assets/` – Generated HTML, JS, and CSS bundles after running the build step.
-- `att_server_python/` – Python MCP server that returns the AT&T Products widgets.
+- `att_server_python/` – Python MCP server that returns the AT&T Products widgets (with OAuth support).
 - `solar-system_server_python/` – Python MCP server for the 3D solar system widget.
+- `instructions/` – Comprehensive guides for setup, deployment, OAuth, and troubleshooting.
 - `build-all.mts` – Vite build orchestrator that produces hashed bundles for every widget entrypoint.
 
 ## Prerequisites
@@ -135,6 +144,55 @@ You can then invoke tools by asking something related. For example, for the AT&T
 - "Where can I get AT&T Fiber internet?"
 - "What do you recommend for me?" or "Show me personalized offers"
 - "Tell me about Internet Backup" or "Do you have Internet Backup offers?"
+
+## OAuth Authentication (Optional)
+
+The AT&T MCP server includes built-in OAuth 2.0 authentication for secure access control.
+
+### Quick Start
+
+```bash
+# 1. Enable OAuth in .env
+cd att_server_python
+cp .env.example .env
+# Edit .env: Set OAUTH_ENABLED=true
+
+# 2. Install dependencies (includes jinja2)
+pip install -r requirements.txt
+
+# 3. Start server
+python main.py
+
+# 4. Test OAuth
+curl https://your-domain.com/oauth/stats | jq
+```
+
+### Features
+
+- ✅ **Dynamic Client Registration** – ChatGPT auto-registers as a client
+- ✅ **Authorization Code Flow** – Standard OAuth 2.0 with PKCE
+- ✅ **Custom Consent UI** – Modern authorization page
+- ✅ **Flexible Scopes** – Fine-grained access control
+- ✅ **Token Management** – Access tokens, refresh tokens, and revocation
+
+### Documentation
+
+- **[Quick Start Guide](instructions/OAUTH_QUICK_START.md)** – Get OAuth running in 5 minutes
+- **[Complete Setup Guide](instructions/OAUTH_SETUP_GUIDE.md)** – Full documentation and troubleshooting
+- **[Implementation Summary](OAUTH_IMPLEMENTATION_SUMMARY.md)** – What's been implemented
+
+### Configuration
+
+OAuth is configured via environment variables in `.env`:
+
+```bash
+OAUTH_ENABLED=true
+OAUTH_ISSUER_URL=https://att-mcp.jpaulo.io
+OAUTH_VALID_SCOPES=read,write,payment,account
+OAUTH_DEFAULT_SCOPES=read
+```
+
+See [OAUTH_SETUP_GUIDE.md](instructions/OAUTH_SETUP_GUIDE.md) for detailed configuration options.
 
 ## Next steps
 

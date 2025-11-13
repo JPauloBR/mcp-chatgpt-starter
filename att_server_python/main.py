@@ -16,8 +16,10 @@ from typing import Any, Dict, List
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.settings import AuthSettings
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from dotenv import load_dotenv
 import logging
@@ -38,6 +40,18 @@ if SERVER_URL == 'http://localhost:8000':
         "SERVER_URL not set in .env file. Using default: http://localhost:8000. "
         "For production/ngrok, set SERVER_URL=https://your-ngrok-url.ngrok-free.app in .env"
     )
+
+# OAuth Configuration
+OAUTH_ENABLED = os.environ.get('OAUTH_ENABLED', 'false').lower() == 'true'
+OAUTH_ISSUER_URL = os.environ.get('OAUTH_ISSUER_URL', SERVER_URL)
+OAUTH_VALID_SCOPES = os.environ.get('OAUTH_VALID_SCOPES', 'read,write').split(',')
+OAUTH_DEFAULT_SCOPES = os.environ.get('OAUTH_DEFAULT_SCOPES', 'read').split(',')
+
+logger.info(f"OAuth enabled: {OAUTH_ENABLED}")
+if OAUTH_ENABLED:
+    logger.info(f"OAuth issuer URL: {OAUTH_ISSUER_URL}")
+    logger.info(f"OAuth valid scopes: {OAUTH_VALID_SCOPES}")
+    logger.info(f"OAuth default scopes: {OAUTH_DEFAULT_SCOPES}")
 
 
 @dataclass(frozen=True)
@@ -105,6 +119,9 @@ def _modify_html_paths(html: str) -> str:
     
     logger.debug(f"Modifying HTML paths to use assets URL: {assets_url}")
     
+    # Check if HTML already has correct absolute URLs
+    has_correct_urls = base_url in html and '/assets/' in html
+    
     # Track replacements for debugging
     replacements_made = 0
     
@@ -134,8 +151,10 @@ def _modify_html_paths(html: str) -> str:
     
     if replacements_made > 0:
         logger.debug(f"Made {replacements_made} types of path replacements")
+    elif not has_correct_urls:
+        logger.warning("No path replacements made and no absolute URLs found - HTML may be malformed")
     else:
-        logger.warning("No path replacements made - HTML may already have absolute URLs or be malformed")
+        logger.debug("HTML already contains correct absolute URLs - no replacements needed")
     
     return html
 
@@ -242,9 +261,42 @@ class ATTProductInput(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 
+# Initialize OAuth provider if enabled
+oauth_provider = None
+auth_settings = None
+
+if OAUTH_ENABLED:
+    from oauth_provider import InMemoryOAuthProvider
+    
+    oauth_provider = InMemoryOAuthProvider(
+        issuer_url=OAUTH_ISSUER_URL,
+        valid_scopes=OAUTH_VALID_SCOPES,
+        default_scopes=OAUTH_DEFAULT_SCOPES,
+        access_token_ttl=3600,  # 1 hour
+        refresh_token_ttl=86400,  # 24 hours
+        auth_code_ttl=600,  # 10 minutes
+    )
+    
+    auth_settings = AuthSettings(
+        issuer_url=OAUTH_ISSUER_URL,
+        resource_server_url=f"{OAUTH_ISSUER_URL}/mcp",
+        client_registration_options={
+            "enabled": True,
+            "valid_scopes": OAUTH_VALID_SCOPES,
+            "default_scopes": OAUTH_DEFAULT_SCOPES,
+        },
+        revocation_options={
+            "enabled": True,
+        },
+    )
+    
+    logger.info("OAuth provider initialized")
+
 mcp = FastMCP(
     name="att-products-python",
     stateless_http=True,
+    auth_server_provider=oauth_provider if OAUTH_ENABLED else None,
+    auth=auth_settings if OAUTH_ENABLED else None,
 )
 
 
@@ -563,6 +615,121 @@ async def health_check(request: Request):
     })
 
 app.add_route("/health", health_check, methods=["GET"])
+
+# OAuth-specific endpoints (only if OAuth is enabled)
+if OAUTH_ENABLED:
+    from starlette.responses import HTMLResponse, RedirectResponse
+    from starlette.templating import Jinja2Templates
+    from urllib.parse import parse_qs, urlparse
+    
+    # Initialize template engine
+    TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    
+    async def oauth_authorize_page(request: Request):
+        """Display authorization consent page."""
+        try:
+            # Parse query parameters
+            query_params = dict(request.query_params)
+            
+            client_id = query_params.get("client_id")
+            redirect_uri = query_params.get("redirect_uri")
+            state = query_params.get("state", "")
+            code_challenge = query_params.get("code_challenge")
+            scope = query_params.get("scope", " ".join(OAUTH_DEFAULT_SCOPES))
+            temp_key = query_params.get("temp_key")
+            scopes = scope.split() if scope else OAUTH_DEFAULT_SCOPES
+            
+            if not client_id or not temp_key:
+                return HTMLResponse("<h1>Error: Missing required parameters</h1>", status_code=400)
+            
+            # Get client info
+            client = await oauth_provider.get_client(client_id)
+            client_name = client.client_name if client else "Unknown Application"
+            
+            # Scope descriptions for better UX
+            scope_descriptions = {
+                "read": "View AT&T products, services, and store locations",
+                "write": "Make changes to your account and preferences",
+                "payment": "Process payments on your behalf",
+                "account": "Access your account information",
+            }
+            
+            logger.info(f"Displaying consent page for client: {client_id}")
+            
+            return templates.TemplateResponse(
+                "authorize.html",
+                {
+                    "request": request,
+                    "client_id": client_id,
+                    "client_name": client_name,
+                    "redirect_uri": redirect_uri,
+                    "state": state,
+                    "code_challenge": code_challenge,
+                    "temp_key": temp_key,
+                    "scopes": scopes,
+                    "scopes_str": " ".join(scopes),
+                    "scope_descriptions": scope_descriptions,
+                    "action_url": "/oauth/authorize/approve",
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error in authorization page: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+    
+    async def oauth_authorize_approve(request: Request):
+        """Handle authorization approval/denial."""
+        try:
+            # Get form data
+            form = await request.form()
+            temp_key = form.get("temp_key")
+            state = form.get("state", "")
+            approved = form.get("approved", "true") == "true"
+            
+            if not temp_key:
+                return HTMLResponse("<h1>Error: Missing temp_key</h1>", status_code=400)
+            
+            logger.info(f"Processing authorization approval: approved={approved}, temp_key={temp_key[:8]}...")
+            
+            # Complete authorization
+            redirect_url = await oauth_provider.complete_authorization(temp_key, approved)
+            
+            if not redirect_url:
+                return HTMLResponse("<h1>Error: Authorization request expired or invalid</h1>", status_code=400)
+            
+            # Add state parameter if present
+            if state and "?" in redirect_url:
+                redirect_url += f"&state={state}"
+            elif state:
+                redirect_url += f"?state={state}"
+            
+            logger.info(f"Redirecting to: {redirect_url}")
+            
+            return RedirectResponse(url=redirect_url, status_code=302)
+            
+        except Exception as e:
+            logger.error(f"Error in authorization approval: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+    
+    async def oauth_stats(request: Request):
+        """OAuth statistics endpoint (for debugging)."""
+        if oauth_provider:
+            stats = oauth_provider.get_stats()
+            return JSONResponse({
+                "oauth_enabled": True,
+                "issuer_url": OAUTH_ISSUER_URL,
+                "valid_scopes": OAUTH_VALID_SCOPES,
+                "default_scopes": OAUTH_DEFAULT_SCOPES,
+                **stats,
+            })
+        return JSONResponse({"oauth_enabled": False})
+    
+    # Add OAuth routes
+    app.add_route("/oauth/authorize/page", oauth_authorize_page, methods=["GET"])
+    app.add_route("/oauth/authorize/approve", oauth_authorize_approve, methods=["POST"])
+    app.add_route("/oauth/stats", oauth_stats, methods=["GET"])
+    
+    logger.info("OAuth endpoints registered: /oauth/authorize/page, /oauth/authorize/approve, /oauth/stats")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AT&T MCP Authorization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #0057b8 0%, #003d7a 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo svg {
+            width: 60px;
+            height: 60px;
+            fill: #0057b8;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .info-box {
+            background: #f5f7fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .info-label {
+            color: #666;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .info-value {
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .permissions {
+            margin-bottom: 30px;
+        }
+        
+        .permissions h3 {
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .permission-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background: #f5f7fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+        
+        .permission-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .permission-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            color: #0057b8;
+        }
+        
+        .permission-text {
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn-authorize {
+            background: #0057b8;
+            color: white;
+        }
+        
+        .btn-authorize:hover {
+            background: #003d7a;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 87, 184, 0.3);
+        }
+        
+        .btn-deny {
+            background: #e0e0e0;
+            color: #333;
+        }
+        
+        .btn-deny:hover {
+            background: #d0d0d0;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .footer-text {
+            color: #999;
+            font-size: 12px;
+        }
+        
+        .footer-link {
+            color: #0057b8;
+            text-decoration: none;
+        }
+        
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                <path d="M2 17l10 5 10-5"/>
+                <path d="M2 12l10 5 10-5"/>
+            </svg>
+        </div>
+        
+        <h1>Authorization Request</h1>
+        <p class="subtitle">ChatGPT wants to access your AT&T MCP Server</p>
+        
+        <div class="info-box">
+            <div class="info-row">
+                <span class="info-label">Application:</span>
+                <span class="info-value">{{ client_name }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Client ID:</span>
+                <span class="info-value">{{ client_id }}</span>
+            </div>
+        </div>
+        
+        <div class="permissions">
+            <h3>Requested Permissions</h3>
+            {% for scope in scopes %}
+            <div class="permission-item">
+                <svg class="permission-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span class="permission-text">{{ scope_descriptions.get(scope, scope) }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <form method="POST" action="{{ action_url }}" id="authForm">
+            <input type="hidden" name="temp_key" value="{{ temp_key }}">
+            <input type="hidden" name="state" value="{{ state }}">
+            <input type="hidden" name="approved" value="true" id="approvedInput">
+            
+            <div class="actions">
+                <button type="button" class="btn-deny" onclick="denyAuthorization()">
+                    Deny
+                </button>
+                <button type="submit" class="btn-authorize">
+                    Authorize
+                </button>
+            </div>
+        </form>
+        
+        <script>
+            function denyAuthorization() {
+                document.getElementById('approvedInput').value = 'false';
+                document.getElementById('authForm').submit();
+            }
+        </script>
+        
+        <div class="footer">
+            <p class="footer-text">
+                By authorizing, you allow this application to access your AT&T MCP resources.
+                <br>
+                <a href="https://jpaulo.io" class="footer-link" target="_blank">Learn more</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
