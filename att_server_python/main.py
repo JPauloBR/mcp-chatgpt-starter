@@ -16,7 +16,7 @@ from typing import Any, Dict, List
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
-from mcp.server.auth.settings import AuthSettings
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
@@ -43,12 +43,24 @@ if SERVER_URL == 'http://localhost:8000':
 
 # OAuth Configuration
 OAUTH_ENABLED = os.environ.get('OAUTH_ENABLED', 'false').lower() == 'true'
+OAUTH_PROVIDER = os.environ.get('OAUTH_PROVIDER', 'custom')  # custom, google, azure
 OAUTH_ISSUER_URL = os.environ.get('OAUTH_ISSUER_URL', SERVER_URL)
-OAUTH_VALID_SCOPES = os.environ.get('OAUTH_VALID_SCOPES', 'read,write').split(',')
+OAUTH_VALID_SCOPES = os.environ.get('OAUTH_VALID_SCOPES', 'read,write,payment,account').split(',')
 OAUTH_DEFAULT_SCOPES = os.environ.get('OAUTH_DEFAULT_SCOPES', 'read').split(',')
+
+# Provider-specific credentials (for Google/Azure)
+OAUTH_CLIENT_ID = os.environ.get('OAUTH_CLIENT_ID')  # Google/Azure app client ID
+OAUTH_CLIENT_SECRET = os.environ.get('OAUTH_CLIENT_SECRET')  # Google/Azure app client secret
+OAUTH_TENANT_ID = os.environ.get('OAUTH_TENANT_ID', 'common')  # Azure tenant ID
+
+# Token lifetimes (seconds)
+OAUTH_ACCESS_TOKEN_TTL = int(os.environ.get('OAUTH_ACCESS_TOKEN_TTL', '3600'))  # 1 hour
+OAUTH_REFRESH_TOKEN_TTL = int(os.environ.get('OAUTH_REFRESH_TOKEN_TTL', '86400'))  # 24 hours
+OAUTH_AUTH_CODE_TTL = int(os.environ.get('OAUTH_AUTH_CODE_TTL', '600'))  # 10 minutes
 
 logger.info(f"OAuth enabled: {OAUTH_ENABLED}")
 if OAUTH_ENABLED:
+    logger.info(f"OAuth provider: {OAUTH_PROVIDER}")
     logger.info(f"OAuth issuer URL: {OAUTH_ISSUER_URL}")
     logger.info(f"OAuth valid scopes: {OAUTH_VALID_SCOPES}")
     logger.info(f"OAuth default scopes: {OAUTH_DEFAULT_SCOPES}")
@@ -266,31 +278,53 @@ oauth_provider = None
 auth_settings = None
 
 if OAUTH_ENABLED:
-    from oauth_provider import InMemoryOAuthProvider
+    from oauth_providers.factory import create_provider_from_env, validate_provider_config
     
-    oauth_provider = InMemoryOAuthProvider(
-        issuer_url=OAUTH_ISSUER_URL,
-        valid_scopes=OAUTH_VALID_SCOPES,
-        default_scopes=OAUTH_DEFAULT_SCOPES,
-        access_token_ttl=3600,  # 1 hour
-        refresh_token_ttl=86400,  # 24 hours
-        auth_code_ttl=600,  # 10 minutes
+    # Validate provider configuration
+    is_valid, error_msg = validate_provider_config(
+        OAUTH_PROVIDER,
+        OAUTH_CLIENT_ID,
+        OAUTH_CLIENT_SECRET
     )
     
-    auth_settings = AuthSettings(
-        issuer_url=OAUTH_ISSUER_URL,
-        resource_server_url=f"{OAUTH_ISSUER_URL}/mcp",
-        client_registration_options={
-            "enabled": True,
-            "valid_scopes": OAUTH_VALID_SCOPES,
-            "default_scopes": OAUTH_DEFAULT_SCOPES,
-        },
-        revocation_options={
-            "enabled": True,
-        },
-    )
-    
-    logger.info("OAuth provider initialized")
+    if not is_valid:
+        logger.error(f"OAuth configuration error: {error_msg}")
+        logger.error("OAuth will be disabled. Please check your .env file.")
+        OAUTH_ENABLED = False
+    else:
+        # Create OAuth provider
+        oauth_provider = create_provider_from_env(
+            provider_type=OAUTH_PROVIDER,
+            issuer_url=OAUTH_ISSUER_URL,
+            client_id=OAUTH_CLIENT_ID,
+            client_secret=OAUTH_CLIENT_SECRET,
+            tenant_id=OAUTH_TENANT_ID,
+            valid_scopes=OAUTH_VALID_SCOPES,
+            default_scopes=OAUTH_DEFAULT_SCOPES,
+            access_token_ttl=OAUTH_ACCESS_TOKEN_TTL,
+            refresh_token_ttl=OAUTH_REFRESH_TOKEN_TTL,
+            auth_code_ttl=OAUTH_AUTH_CODE_TTL,
+        )
+        
+        logger.info(f"OAuth provider initialized: {OAUTH_PROVIDER}")
+        
+        # Configure AuthSettings for MCP
+        # The resource_server_url should include the /mcp path where the MCP server is mounted
+        resource_server_url = f"{OAUTH_ISSUER_URL.rstrip('/')}/mcp"
+        
+        auth_settings = AuthSettings(
+            issuer_url=OAUTH_ISSUER_URL,
+            resource_server_url=resource_server_url,  # MCP server URL with /mcp path
+            required_scopes=OAUTH_DEFAULT_SCOPES,
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True,
+                valid_scopes=OAUTH_VALID_SCOPES,
+                default_scopes=OAUTH_DEFAULT_SCOPES,
+            ),
+            revocation_options=RevocationOptions(enabled=True),
+        )
+        
+        logger.info(f"AuthSettings configured: {auth_settings}")
 
 mcp = FastMCP(
     name="att-products-python",
@@ -531,6 +565,15 @@ mcp._mcp_server.request_handlers[types.ReadResourceRequest] = _handle_read_resou
 
 app = mcp.streamable_http_app()
 
+# Initialize OAuth provider on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize OAuth provider when the server starts."""
+    if OAUTH_ENABLED and oauth_provider:
+        logger.info("Initializing OAuth provider...")
+        await oauth_provider.initialize()
+        logger.info("OAuth provider initialization complete")
+
 # Add request logging middleware for debugging
 @app.middleware("http")
 async def log_requests(request, call_next):
@@ -715,21 +758,186 @@ if OAUTH_ENABLED:
         """OAuth statistics endpoint (for debugging)."""
         if oauth_provider:
             stats = oauth_provider.get_stats()
+            provider_info = oauth_provider.get_provider_info()
             return JSONResponse({
                 "oauth_enabled": True,
                 "issuer_url": OAUTH_ISSUER_URL,
                 "valid_scopes": OAUTH_VALID_SCOPES,
                 "default_scopes": OAUTH_DEFAULT_SCOPES,
+                **provider_info,
                 **stats,
             })
         return JSONResponse({"oauth_enabled": False})
     
+    async def google_oauth_callback(request: Request):
+        """Handle Google OAuth callback."""
+        from oauth_providers.google import GoogleOAuthProvider
+        
+        if not isinstance(oauth_provider, GoogleOAuthProvider):
+            return HTMLResponse("<h1>Error: Google OAuth not configured</h1>", status_code=400)
+        
+        try:
+            code = request.query_params.get("code")
+            state = request.query_params.get("state")  # This is our temp_key
+            error = request.query_params.get("error")
+            
+            if error:
+                logger.error(f"Google OAuth error: {error}")
+                return HTMLResponse(f"<h1>Google Authentication Error</h1><p>{error}</p>", status_code=400)
+            
+            if not code or not state:
+                return HTMLResponse("<h1>Error: Missing code or state</h1>", status_code=400)
+            
+            # Handle callback and get user info
+            callback_data = await oauth_provider.handle_google_callback(code, state)
+            
+            # Redirect to consent page with user info
+            temp_key = callback_data["temp_key"]
+            user_info = callback_data["user_info"]
+            
+            # Store user info temporarily (will be associated with auth code)
+            from urllib.parse import urlencode
+            consent_params = {
+                "temp_key": temp_key,
+                "provider": "google",
+                "user_email": user_info.get("email", ""),
+                "user_name": user_info.get("name", ""),
+            }
+            
+            consent_url = f"{OAUTH_ISSUER_URL}/oauth/consent/page?{urlencode(consent_params)}"
+            return RedirectResponse(url=consent_url, status_code=302)
+            
+        except Exception as e:
+            logger.error(f"Error in Google callback: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+    
+    async def azure_oauth_callback(request: Request):
+        """Handle Azure OAuth callback."""
+        from oauth_providers.azure import AzureEntraIDProvider
+        
+        if not isinstance(oauth_provider, AzureEntraIDProvider):
+            return HTMLResponse("<h1>Error: Azure OAuth not configured</h1>", status_code=400)
+        
+        try:
+            code = request.query_params.get("code")
+            state = request.query_params.get("state")  # This is our temp_key
+            error = request.query_params.get("error")
+            error_description = request.query_params.get("error_description")
+            
+            if error:
+                logger.error(f"Azure OAuth error: {error} - {error_description}")
+                return HTMLResponse(f"<h1>Azure Authentication Error</h1><p>{error}: {error_description}</p>", status_code=400)
+            
+            if not code or not state:
+                return HTMLResponse("<h1>Error: Missing code or state</h1>", status_code=400)
+            
+            # Handle callback and get user info
+            callback_data = await oauth_provider.handle_azure_callback(code, state)
+            
+            # Redirect to consent page with user info
+            temp_key = callback_data["temp_key"]
+            user_info = callback_data["user_info"]
+            
+            from urllib.parse import urlencode
+            consent_params = {
+                "temp_key": temp_key,
+                "provider": "azure",
+                "user_email": user_info.get("userPrincipalName", user_info.get("mail", "")),
+                "user_name": user_info.get("displayName", ""),
+            }
+            
+            consent_url = f"{OAUTH_ISSUER_URL}/oauth/consent/page?{urlencode(consent_params)}"
+            return RedirectResponse(url=consent_url, status_code=302)
+            
+        except Exception as e:
+            logger.error(f"Error in Azure callback: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+    
+    async def oauth_consent_page(request: Request):
+        """Display consent page after external OAuth (Google/Azure)."""
+        try:
+            temp_key = request.query_params.get("temp_key")
+            provider = request.query_params.get("provider", "custom")
+            user_email = request.query_params.get("user_email", "")
+            user_name = request.query_params.get("user_name", "")
+            
+            if not temp_key:
+                return HTMLResponse("<h1>Error: Missing temp_key</h1>", status_code=400)
+            
+            # Get provider info for branding
+            provider_info = oauth_provider.get_provider_info()
+            
+            scope_descriptions = {
+                "read": "View AT&T products, services, and store locations",
+                "write": "Make changes to your account and preferences",
+                "payment": "Process payments on your behalf",
+                "account": "Access your account information",
+            }
+            
+            return templates.TemplateResponse(
+                "authorize.html",
+                {
+                    "request": request,
+                    "client_id": "chatgpt",
+                    "client_name": "ChatGPT",
+                    "redirect_uri": "",
+                    "state": "",
+                    "code_challenge": "",
+                    "temp_key": temp_key,
+                    "scopes": OAUTH_DEFAULT_SCOPES,
+                    "scopes_str": " ".join(OAUTH_DEFAULT_SCOPES),
+                    "scope_descriptions": scope_descriptions,
+                    "action_url": "/oauth/consent/approve",
+                    "provider": provider,
+                    "provider_name": provider_info.get("name", provider),
+                    "user_email": user_email,
+                    "user_name": user_name,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error in consent page: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+    
+    async def oauth_consent_approve(request: Request):
+        """Handle consent approval for external OAuth providers."""
+        try:
+            form = await request.form()
+            temp_key = form.get("temp_key")
+            approved = form.get("approved", "true") == "true"
+            user_info_str = form.get("user_info", "{}")
+            
+            if not temp_key:
+                return HTMLResponse("<h1>Error: Missing temp_key</h1>", status_code=400)
+            
+            logger.info(f"Processing consent approval: approved={approved}, temp_key={temp_key[:8]}...")
+            
+            # Parse user info if provided
+            import json
+            user_info = json.loads(user_info_str) if user_info_str != "{}" else None
+            
+            # Complete authorization with user info
+            redirect_url = await oauth_provider.complete_authorization(temp_key, approved, user_info)
+            
+            if not redirect_url:
+                return HTMLResponse("<h1>Error: Authorization request expired or invalid</h1>", status_code=400)
+            
+            logger.info(f"Redirecting to: {redirect_url}")
+            return RedirectResponse(url=redirect_url, status_code=302)
+            
+        except Exception as e:
+            logger.error(f"Error in consent approval: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+    
     # Add OAuth routes
     app.add_route("/oauth/authorize/page", oauth_authorize_page, methods=["GET"])
     app.add_route("/oauth/authorize/approve", oauth_authorize_approve, methods=["POST"])
+    app.add_route("/oauth/google/callback", google_oauth_callback, methods=["GET"])
+    app.add_route("/oauth/azure/callback", azure_oauth_callback, methods=["GET"])
+    app.add_route("/oauth/consent/page", oauth_consent_page, methods=["GET"])
+    app.add_route("/oauth/consent/approve", oauth_consent_approve, methods=["POST"])
     app.add_route("/oauth/stats", oauth_stats, methods=["GET"])
     
-    logger.info("OAuth endpoints registered: /oauth/authorize/page, /oauth/authorize/approve, /oauth/stats")
+    logger.info("OAuth endpoints registered: /oauth/authorize/page, /oauth/authorize/approve, /oauth/google/callback, /oauth/azure/callback, /oauth/consent/page, /oauth/stats")
 
 
 if __name__ == "__main__":
