@@ -119,9 +119,9 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         client: OAuthClientInformationFull,
         params: AuthorizationParams
     ) -> str:
-        """Handle authorization request and return redirect URL with authorization code.
+        """Handle authorization request and return redirect URL for login/consent.
         
-        Auto-approves authorization for ChatGPT compatibility (no interactive consent page).
+        Redirects to the internal login page to authenticate the user and request consent.
         """
         # Validate scopes
         scopes = self.validate_scopes(params.scopes)
@@ -134,13 +134,16 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
                 error_description="Invalid redirect_uri"
             )
         
-        # Generate authorization code immediately (auto-approve)
-        code = self._generate_token(160)
-        expires_at = time.time() + self.config.auth_code_ttl
+        # Generate temporary key for the pending request
+        temp_key = self._generate_token(32)
+        expires_at = time.time() + 600  # 10 minutes to complete login/consent
         
-        # Store authorization code
+        # Store pending authorization request
+        # We prefix with "pending_" to distinguish from actual auth codes
+        pending_key = f"pending_{temp_key}"
+        
         auth_code = AuthorizationCode(
-            code=code,
+            code=temp_key,  # This is the temp key, not the final auth code
             scopes=scopes,
             expires_at=expires_at,
             client_id=client.client_id,
@@ -149,23 +152,26 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
             redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
             resource=params.resource,
         )
-        self.store.auth_codes[code] = auth_code
+        self.store.save_auth_code(pending_key, auth_code)
         
-        logger.info(f"Generated authorization code for client: {client.client_id} (auto-approved)")
-        logger.info(f"Authorization code: {code[:16]}... (expires in {self.config.auth_code_ttl}s)")
-        logger.info(f"Redirect URI: {redirect_uri}")
-        logger.info(f"State: {params.state}")
+        logger.info(f"Initiating interactive authorization for client: {client.client_id}")
+        logger.debug(f"Temp key: {temp_key}")
         
-        # Construct redirect URI with authorization code
-        from mcp.server.auth.provider import construct_redirect_uri
-        redirect_url = construct_redirect_uri(
-            redirect_uri,
-            code=code,
-            state=params.state,
-        )
+        # Construct redirect URL to our login page
+        # We need to pass all parameters so they can be preserved through the login flow
+        query_params = {
+            "client_id": client.client_id,
+            "redirect_uri": redirect_uri,
+            "scope": " ".join(scopes),
+            "state": params.state or "",
+            "code_challenge": params.code_challenge or "",
+            "temp_key": temp_key,
+        }
         
-        logger.info(f"Full redirect URL: {redirect_url}")
-        return redirect_url
+        login_url = f"{self.config.issuer_url}/oauth/authorize/page?{urlencode(query_params)}"
+        logger.info(f"Redirecting to login page: {login_url}")
+        
+        return login_url
     
     async def complete_authorization(
         self,
@@ -181,7 +187,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
             return None
         
         # Remove pending request
-        del self.store.auth_codes[pending_key]
+        self.store.delete_auth_code(pending_key)
         
         if not approved:
             logger.info(f"Authorization denied for client: {pending_request.client_id}")
@@ -208,7 +214,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         )
         
         # Store authorization code
-        self.store.auth_codes[code] = auth_code
+        self.store.save_auth_code(code, auth_code)
         logger.info(f"Authorization approved for client: {pending_request.client_id}")
         logger.debug(f"Code: {code[:8]}... (expires in {self.config.auth_code_ttl}s)")
         
@@ -246,7 +252,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         
         if auth_code.expires_at < time.time():
             logger.error(f"Authorization code expired: {authorization_code[:16]}...")
-            del self.store.auth_codes[authorization_code]
+            self.store.delete_auth_code(authorization_code)
             return None
         
         logger.info(f"Authorization code loaded successfully")
@@ -262,7 +268,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         
         # Delete authorization code (one-time use)
         if authorization_code.code in self.store.auth_codes:
-            del self.store.auth_codes[authorization_code.code]
+            self.store.delete_auth_code(authorization_code.code)
             logger.info(f"Deleted one-time authorization code")
         
         # Generate tokens
@@ -273,13 +279,14 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         refresh_expires_at = int(time.time() + self.config.refresh_token_ttl)
         
         # Store tokens
-        self.store.access_tokens[access_token] = AccessToken(
+        access_token_obj = AccessToken(
             token=access_token,
             client_id=client.client_id,
             scopes=authorization_code.scopes,
             expires_at=access_expires_at,
             resource=authorization_code.resource,
         )
+        self.store.add_access_token(access_token_obj)
         
         # Store and persist refresh token
         refresh_token_obj = RefreshToken(
@@ -345,12 +352,13 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         refresh_expires_at = int(time.time() + self.config.refresh_token_ttl)
         
         # Store new tokens
-        self.store.access_tokens[new_access_token] = AccessToken(
+        access_token_obj = AccessToken(
             token=new_access_token,
             client_id=client.client_id,
             scopes=granted_scopes,
             expires_at=access_expires_at,
         )
+        self.store.add_access_token(access_token_obj)
         
         # Store and persist new refresh token
         new_refresh_token_obj = RefreshToken(
@@ -388,7 +396,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         
         if access_token.expires_at < time.time():
             logger.debug(f"Access token expired: {token[:8]}...")
-            del self.store.access_tokens[token]
+            self.store.remove_access_token(token)
             return None
         
         logger.debug(f"Access token valid: {token[:8]}... (client: {access_token.client_id})")
@@ -405,7 +413,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         if token in self.store.access_tokens:
             token_obj = self.store.access_tokens[token]
             if token_obj.client_id == client.client_id:
-                del self.store.access_tokens[token]
+                self.store.remove_access_token(token)
                 logger.info(f"Revoked access token: {token[:8]}...")
                 return
         
@@ -419,7 +427,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
                     if at.client_id == client_id
                 ]
                 for access_token in associated_access_tokens:
-                    del self.store.access_tokens[access_token]
+                    self.store.remove_access_token(access_token)
                     logger.debug(f"Revoked associated access token: {access_token[:8]}...")
                 
                 self.store.remove_refresh_token(token)

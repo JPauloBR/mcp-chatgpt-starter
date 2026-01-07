@@ -184,6 +184,15 @@ widgets: List[ATTWidget] = [
         response_text="Displayed AT&T store locations with available products and services!",
     ),
     ATTWidget(
+        identifier="att-device-details",
+        title="Shop Specific Device Model",
+        template_uri="ui://widget/att-device-details.html",
+        invoking="Loading device details",
+        invoked="Device details loaded",
+        html=_modify_html_paths(_load_widget_html("att-device-details")),
+        response_text="Here are the details for the device you selected.",
+    ),
+    ATTWidget(
         identifier="att-products-carousel",
         title="Browse AT&T Products",
         template_uri="ui://widget/att-products-carousel.html",
@@ -245,11 +254,60 @@ widgets: List[ATTWidget] = [
         invoked="Payment interface ready",
         html=_modify_html_paths(_load_widget_html("att-payment")),
         response_text="Opening AT&T payment interface. You can securely enter your account information and payment details in the form below.",
-    )
+    ),
 ]
 
 
+
 MIME_TYPE = "text/html+skybridge"
+
+
+# Mock data to mirror frontend availability logic (from coverage-data.json)
+MOCK_COVERAGE_DATA = [
+    {
+        "address": "4670 Avocet Dr, Peachtree Corners, GA 30092",
+        "fiber": True,
+        "internetAir": True
+    },
+    {
+        "address": "1 Market St, San Francisco, CA 94105",
+        "fiber": True,
+        "internetAir": True
+    },
+    {
+        "address": "2300 Mission St, San Francisco, CA 94110",
+        "fiber": True,
+        "internetAir": True
+    },
+    {
+        "address": "1700 Haight St, San Francisco, CA 94117",
+        "fiber": False,
+        "internetAir": True
+    },
+    {
+        "address": "555 California St, San Francisco, CA 94104",
+        "fiber": True,
+        "internetAir": True
+    }
+]
+
+
+def _check_availability(address: str | None) -> dict:
+    """Mirror frontend availability logic to provide accurate context to LLM."""
+    if not address:
+        # Default fallback (matches frontend default)
+        return {"fiber": True, "internetAir": True}
+        
+    addr_lower = address.lower()
+    
+    # Check mock data
+    for mock in MOCK_COVERAGE_DATA:
+        mock_addr = mock["address"].lower()
+        if mock_addr in addr_lower or addr_lower in mock_addr:
+            return {"fiber": mock["fiber"], "internetAir": mock["internetAir"]}
+            
+    # Default fallback if not found (matches frontend default)
+    return {"fiber": True, "internetAir": True}
 
 
 WIDGETS_BY_ID: Dict[str, ATTWidget] = {widget.identifier: widget for widget in widgets}
@@ -326,8 +384,30 @@ if OAUTH_ENABLED:
         
         logger.info(f"AuthSettings configured: {auth_settings}")
 
+MCP_INSTRUCTIONS = """
+AT&T Assistant Tool Selection Rules:
+
+CRITICAL RULE FOR DEVICE REQUESTS:
+When a user mentions a SPECIFIC device model name (iPhone 17, iPhone 17 Pro, iPhone 17 Pro Max, Galaxy S25, S25 Ultra, etc.), 
+you MUST use the "att-device-details" tool - NOT "att-products-carousel".
+
+Examples that MUST use att-device-details:
+- "I'd like to shop for the iPhone 17 Pro Max" → att-device-details with deviceId="iphone-17-pro-max"
+- "Show me the new iPhone 17 Pro" → att-device-details with deviceId="iphone-17-pro"
+- "I want to buy a Samsung Galaxy S25 Ultra" → att-device-details with deviceId="samsung-s25-ultra"
+- "Tell me about ATT's newest iPhone 17 Pro Max" → att-device-details with deviceId="iphone-17-pro-max"
+
+Examples that use att-products-carousel:
+- "Show me your phones" → att-products-carousel
+- "What devices do you have?" → att-products-carousel
+- "Browse cell phones" → att-products-carousel
+
+Device ID format: lowercase with hyphens (e.g., "iphone-17-pro-max", "samsung-s25-ultra")
+"""
+
 mcp = FastMCP(
     name="att-products-python",
+    instructions=MCP_INSTRUCTIONS,
     stateless_http=True,
     auth_server_provider=oauth_provider if OAUTH_ENABLED else None,
     auth=auth_settings if OAUTH_ENABLED else None,
@@ -369,6 +449,37 @@ PAYMENT_TOOL_SCHEMA: Dict[str, Any] = {
 }
 
 
+# Device name to ID mapping for LLM inference
+DEVICE_NAME_MAPPING: Dict[str, str] = {
+    "iphone 17 pro max": "iphone-17-pro-max",
+    "iphone17 pro max": "iphone-17-pro-max",
+    "iphone 17 promax": "iphone-17-pro-max",
+    "iphone 17pro max": "iphone-17-pro-max",
+    "iphone 17 pro": "iphone-17-pro",
+    "galaxy s25 ultra": "samsung-s25-ultra",
+    "samsung s25 ultra": "samsung-s25-ultra",
+    "samsung galaxy s25 ultra": "samsung-s25-ultra",
+    "s25 ultra": "samsung-s25-ultra",
+    "galaxy s25+": "samsung-s25-plus",
+    "galaxy s25 plus": "samsung-s25-plus",
+    "samsung s25+": "samsung-s25-plus",
+    "galaxy s25": "samsung-s25",
+    "samsung s25": "samsung-s25",
+}
+
+DEVICE_DETAILS_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "deviceId": {
+            "type": "string",
+            "description": "The device ID to show details for. Convert device names to IDs: 'iPhone 17 Pro Max' -> 'iphone-17-pro-max', 'iPhone 17 Pro' -> 'iphone-17-pro', 'Samsung Galaxy S25 Ultra' -> 'samsung-s25-ultra', 'Galaxy S25+' -> 'samsung-s25-plus', 'Galaxy S25' -> 'samsung-s25'. Use lowercase with hyphens.",
+        }
+    },
+    "required": ["deviceId"],
+    "additionalProperties": False,
+}
+
+
 def _resource_description(widget: ATTWidget) -> str:
     return f"{widget.title} widget markup"
 
@@ -403,6 +514,12 @@ async def _list_tools() -> List[types.Tool]:
         if widget.identifier == "att-make-payment":
             schema = deepcopy(PAYMENT_TOOL_SCHEMA)
             description = "Open AT&T payment interface. IMPORTANT: Do NOT ask user for account numbers, phone numbers, or ZIP codes - these will be collected securely in the widget. You may optionally infer 'paymentFlow' (authenticated vs guest) and 'serviceType' from the user's message context, but NEVER prompt for these - only include if clearly implied in their request."
+        elif widget.identifier == "att-device-details":
+            schema = deepcopy(DEVICE_DETAILS_SCHEMA)
+            description = "PRIORITY: Use this tool FIRST when user mentions ANY specific device model name like 'iPhone 17', 'iPhone 17 Pro', 'iPhone 17 Pro Max', 'Galaxy S25', 'S25 Ultra', etc. Triggers: 'shop for iPhone 17 Pro Max', 'buy Samsung S25', 'want the new iPhone', 'interested in iPhone 17', 'newest iPhone 17 Pro Max'. Shows device details with pricing, specs, colors, and trade-in offers. This tool takes priority over att-products-carousel when a specific model is mentioned."
+        elif widget.identifier == "att-products-carousel":
+            schema = deepcopy(TOOL_INPUT_SCHEMA)
+            description = "Browse AT&T products by category ONLY when NO specific model is mentioned. Use for: 'show me phones', 'what phones do you have', 'browse accessories'. NEVER use when user mentions a specific model name (iPhone 17, Galaxy S25, etc.) - those requests MUST use att-device-details instead."
         else:
             schema = deepcopy(TOOL_INPUT_SCHEMA)
             description = widget.title
@@ -507,6 +624,13 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         if "serviceType" in arguments:
             structured_content["serviceType"] = arguments["serviceType"]
             logger.info(f"[Tool Debug] Service type hint: {arguments['serviceType']}")
+    elif widget.identifier == "att-device-details":
+        structured_content: Dict[str, Any] = {}
+        if "deviceId" in arguments:
+            structured_content["deviceId"] = arguments["deviceId"]
+            logger.info(f"[Tool Debug] Device ID: {arguments['deviceId']}")
+        
+        widget_response = widget.response_text
     else:
         # Other tools may have productType and address
         try:
@@ -534,6 +658,28 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         if address:
             structured_content["address"] = address
             logger.info(f"[Tool Debug] Added address to structuredContent: {address}")
+            
+        # For coverage checker, verify availability to give accurate text response
+        if widget.identifier == "att-fiber-coverage-checker":
+            availability = _check_availability(address)
+            structured_content["availability"] = availability
+            
+            fiber_avail = availability["fiber"]
+            air_avail = availability["internetAir"]
+            
+            if fiber_avail and air_avail:
+                widget_response = f"Great news! Both AT&T Fiber and Internet Air are available at {address or 'your location'}."
+            elif fiber_avail:
+                widget_response = f"Great news! AT&T Fiber is available at {address or 'your location'}."
+            elif air_avail:
+                widget_response = f"AT&T Internet Air is available at {address or 'your location'}. AT&T Fiber is not currently available."
+            else:
+                widget_response = f"Neither AT&T Fiber nor Internet Air is currently available at {address or 'your location'}."
+                
+            # Override the static response text with the dynamic one
+            logger.info(f"[Tool Debug] Generated dynamic response: {widget_response}")
+        else:
+            widget_response = widget.response_text
     
     widget_resource = _embedded_widget_resource(widget)
     meta: Dict[str, Any] = {
@@ -550,7 +696,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             content=[
                 types.TextContent(
                     type="text",
-                    text=widget.response_text,
+                    text=widget_response,
                 )
             ],
             structuredContent=structured_content,
@@ -688,7 +834,7 @@ if OAUTH_ENABLED:
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     
     async def oauth_authorize_page(request: Request):
-        """Display authorization consent page."""
+        """Display login page to authenticate user."""
         try:
             # Parse query parameters
             query_params = dict(request.query_params)
@@ -699,11 +845,45 @@ if OAUTH_ENABLED:
             code_challenge = query_params.get("code_challenge")
             scope = query_params.get("scope", " ".join(OAUTH_DEFAULT_SCOPES))
             temp_key = query_params.get("temp_key")
-            scopes = scope.split() if scope else OAUTH_DEFAULT_SCOPES
             
             if not client_id or not temp_key:
                 return HTMLResponse("<h1>Error: Missing required parameters</h1>", status_code=400)
             
+            logger.info(f"Displaying login page for client: {client_id}")
+            
+            return templates.TemplateResponse(
+                "login.html",
+                {
+                    "request": request,
+                    "client_id": client_id,
+                    "redirect_uri": redirect_uri,
+                    "state": state,
+                    "code_challenge": code_challenge,
+                    "temp_key": temp_key,
+                    "scope": scope,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error in login page: {e}", exc_info=True)
+            return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
+
+    async def oauth_login(request: Request):
+        """Handle login form submission and show consent page."""
+        try:
+            # Get form data
+            form = await request.form()
+            user_id = form.get("user_id")
+            client_id = form.get("client_id")
+            redirect_uri = form.get("redirect_uri")
+            state = form.get("state", "")
+            code_challenge = form.get("code_challenge")
+            scope = form.get("scope", " ".join(OAUTH_DEFAULT_SCOPES))
+            temp_key = form.get("temp_key")
+            scopes = scope.split() if scope else OAUTH_DEFAULT_SCOPES
+            
+            if not user_id or not client_id or not temp_key:
+                return HTMLResponse("<h1>Error: Missing required parameters</h1>", status_code=400)
+                
             # Get client info
             client = await oauth_provider.get_client(client_id)
             client_name = client.client_name if client else "Unknown Application"
@@ -716,7 +896,7 @@ if OAUTH_ENABLED:
                 "account": "Access your account information",
             }
             
-            logger.info(f"Displaying consent page for client: {client_id}")
+            logger.info(f"User {user_id} logged in, displaying consent page for client: {client_id}")
             
             return templates.TemplateResponse(
                 "authorize.html",
@@ -732,11 +912,11 @@ if OAUTH_ENABLED:
                     "scopes_str": " ".join(scopes),
                     "scope_descriptions": scope_descriptions,
                     "action_url": "/oauth/authorize/approve",
-                    "user_email": None,  # No authenticated user in this flow
+                    "user_email": user_id,  # Use user_id as email/identifier
                 }
             )
         except Exception as e:
-            logger.error(f"Error in authorization page: {e}", exc_info=True)
+            logger.error(f"Error in login processing: {e}", exc_info=True)
             return HTMLResponse(f"<h1>Error: {str(e)}</h1>", status_code=500)
     
     async def oauth_authorize_approve(request: Request):
@@ -953,6 +1133,7 @@ if OAUTH_ENABLED:
     
     # Add OAuth routes
     app.add_route("/oauth/authorize/page", oauth_authorize_page, methods=["GET"])
+    app.add_route("/oauth/login", oauth_login, methods=["POST"])
     app.add_route("/oauth/authorize/approve", oauth_authorize_approve, methods=["POST"])
     app.add_route("/oauth/google/callback", google_oauth_callback, methods=["GET"])
     app.add_route("/oauth/azure/callback", azure_oauth_callback, methods=["GET"])

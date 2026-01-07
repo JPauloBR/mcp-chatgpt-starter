@@ -1,0 +1,72 @@
+{
+  "devices": {
+    "iphone-17-pro-max": {
+      "id": "iphone-17-pro-max",
+      "brand": "Apple",
+      "name": "iPhone 17 Pro Max",
+      "tagline": "Apple Intelligence.",
+      "monthlyPrice": "$33.34/mo",
+      "discountPrice": "$2.78/mo",
+      "retailPrice": "$1199.99",
+      "offerText": "Get up to $1,100 off this device",
+      "offerSubtext": "Save with eligible trade-in and qualifying wireless plan. Other terms apply.",
+      "gallery": [
+        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/defaultimage/cosmic-orange-hero-zoom.png",
+        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/carousel/cosmic-orange-1.png",
+        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/carousel/cosmic-orange-2.png",
+        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/carousel/cosmic-orange-3.png"
+      ],
+      "models": [
+        { "id": "iphone-17-pro", "name": "iPhone 17 Pro", "display": "6.3-inch display" },
+        { "id": "iphone-17-pro-max", "name": "iPhone 17 Pro Max", "display": "6.9-inch display", "selected": true }
+      ],
+      "colors": [
+        { "name": "Cosmic Orange", "hex": "#E87C48", "selected": true },
+        { "name": "Black Titanium", "hex": "#403E3D" },
+        { "name": "White Titanium", "hex": "#F2F1ED" },
+        { "name": "Natural Titanium", "hex": "#BEB9B0" }
+      ],
+      "rating": 4.1,
+      "reviewCount": "11K",
+      "features": [
+        "A18 Pro chip",
+        "Camera Control",
+        "48MP Fusion camera",
+        "Titanium design"
+      ]
+    },
+    "samsung-s25-ultra": {
+      "id": "samsung-s25-ultra",
+      "brand": "Samsung",
+      "name": "Galaxy S25 Ultra",
+      "tagline": "Galaxy AI is here.",
+      "monthlyPrice": "$36.12/mo",
+      "discountPrice": "$5.56/mo",
+      "retailPrice": "$1299.99",
+      "offerText": "Get up to $1,000 off this device",
+      "offerSubtext": "Save with eligible trade-in and qualifying wireless plan. Other terms apply.",
+      "gallery": [
+        "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/defaultimage/titanium-black-hero-zoom.png",
+        "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/carousel/titanium-black-1.png",
+        "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/carousel/titanium-black-2.png"
+      ],
+      "models": [
+        { "id": "samsung-s25", "name": "Galaxy S25", "display": "6.2-inch display" },
+        { "id": "samsung-s25-plus", "name": "Galaxy S25+", "display": "6.7-inch display" },
+        { "id": "samsung-s25-ultra", "name": "Galaxy S25 Ultra", "display": "6.8-inch display", "selected": true }
+      ],
+      "colors": [
+        { "name": "Titanium Black", "hex": "#2C2C2C", "selected": true },
+        { "name": "Titanium Gray", "hex": "#8C8C8C" },
+        { "name": "Titanium Violet", "hex": "#6C5C8C" }
+      ],
+      "rating": 4.8,
+      "reviewCount": "5K",
+      "features": [
+        "Snapdragon 8 Gen 4",
+        "200MP Camera",
+        "S Pen included"
+      ]
+    }
+  }
+}

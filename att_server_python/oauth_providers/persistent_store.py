@@ -25,7 +25,7 @@ class PersistentStore:
     Stores:
     - Client registrations (persisted)
     - Authorization codes (in-memory only, short-lived)
-    - Access tokens (in-memory only, short-lived)
+    - Access tokens (persisted, short-lived but survive restarts)
     - Refresh tokens (persisted for long-term sessions)
     """
     
@@ -41,14 +41,16 @@ class PersistentStore:
         
         self.clients_file = self.storage_dir / "clients.json"
         self.refresh_tokens_file = self.storage_dir / "refresh_tokens.json"
+        self.access_tokens_file = self.storage_dir / "access_tokens.json"
+        self.auth_codes_file = self.storage_dir / "auth_codes.json"
         
-        # In-memory stores (not persisted)
+        # In-memory stores (now persisted)
         self.auth_codes: Dict[str, AuthorizationCode] = {}
-        self.access_tokens: Dict[str, AccessToken] = {}
         
         # Persistent stores (loaded from disk)
         self.clients: Dict[str, OAuthClientInformationFull] = {}
         self.refresh_tokens: Dict[str, RefreshToken] = {}
+        self.access_tokens: Dict[str, AccessToken] = {}
         
         # Thread safety
         self._lock = Lock()
@@ -56,9 +58,11 @@ class PersistentStore:
         # Load persisted data
         self._load_clients()
         self._load_refresh_tokens()
+        self._load_access_tokens()
+        self._load_auth_codes()
         
         logger.info(f"Persistent storage initialized at {self.storage_dir}")
-        logger.info(f"Loaded {len(self.clients)} clients and {len(self.refresh_tokens)} refresh tokens")
+        logger.info(f"Loaded {len(self.clients)} clients, {len(self.refresh_tokens)} refresh tokens, {len(self.access_tokens)} access tokens, and {len(self.auth_codes)} auth codes")
     
     def _load_clients(self):
         """Load client registrations from disk."""
@@ -179,6 +183,137 @@ class PersistentStore:
         except Exception as e:
             logger.error(f"Failed to save refresh tokens to disk: {e}")
     
+    def _load_access_tokens(self):
+        """Load access tokens from disk."""
+        if not self.access_tokens_file.exists():
+            return
+        
+        try:
+            with open(self.access_tokens_file, 'r') as f:
+                data = json.load(f)
+            
+            current_time = time.time()
+            loaded_count = 0
+            expired_count = 0
+            
+            # Convert JSON back to AccessToken objects
+            for token_value, token_data in data.items():
+                try:
+                    # Skip expired tokens
+                    if token_data["expires_at"] < current_time:
+                        expired_count += 1
+                        continue
+                    
+                    self.access_tokens[token_value] = AccessToken(
+                        token=token_data["token"],
+                        client_id=token_data["client_id"],
+                        scopes=token_data["scopes"],
+                        expires_at=token_data["expires_at"],
+                        resource=token_data.get("resource")
+                    )
+                    loaded_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to load access token: {e}")
+            
+            logger.info(f"Loaded {loaded_count} access tokens, skipped {expired_count} expired")
+        except Exception as e:
+            logger.error(f"Failed to load access tokens from disk: {e}")
+
+    def _save_access_tokens(self):
+        """Save access tokens to disk."""
+        try:
+            with self._lock:
+                current_time = time.time()
+                data = {}
+                
+                # Only save non-expired tokens
+                for token_value, token in self.access_tokens.items():
+                    if token.expires_at > current_time:
+                        token_dict = {
+                            "token": token.token,
+                            "client_id": token.client_id,
+                            "scopes": token.scopes,
+                            "expires_at": token.expires_at,
+                        }
+                        if hasattr(token, "resource") and token.resource:
+                             token_dict["resource"] = token.resource
+                        data[token_value] = token_dict
+                
+                with open(self.access_tokens_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                logger.debug(f"Saved {len(data)} access tokens to {self.access_tokens_file}")
+        except Exception as e:
+            logger.error(f"Failed to save access tokens to disk: {e}")
+
+    def _load_auth_codes(self):
+        """Load authorization codes from disk."""
+        if not self.auth_codes_file.exists():
+            return
+        
+        try:
+            with open(self.auth_codes_file, 'r') as f:
+                data = json.load(f)
+            
+            current_time = time.time()
+            loaded_count = 0
+            expired_count = 0
+            
+            for key, code_data in data.items():
+                try:
+                    # Skip expired codes
+                    if code_data["expires_at"] < current_time:
+                        expired_count += 1
+                        continue
+                    
+                    self.auth_codes[key] = AuthorizationCode(
+                        code=code_data["code"],
+                        client_id=code_data["client_id"],
+                        scopes=code_data["scopes"],
+                        expires_at=code_data["expires_at"],
+                        code_challenge=code_data.get("code_challenge"),
+                        redirect_uri=code_data.get("redirect_uri"),
+                        redirect_uri_provided_explicitly=code_data.get("redirect_uri_provided_explicitly", False),
+                        resource=code_data.get("resource")
+                    )
+                    loaded_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to load auth code: {e}")
+            
+            logger.info(f"Loaded {loaded_count} auth codes, skipped {expired_count} expired")
+        except Exception as e:
+            logger.error(f"Failed to load auth codes from disk: {e}")
+
+    def _save_auth_codes(self):
+        """Save authorization codes to disk."""
+        try:
+            with self._lock:
+                current_time = time.time()
+                data = {}
+                
+                for key, code in self.auth_codes.items():
+                    # Only save non-expired codes
+                    if code.expires_at > current_time:
+                        code_dict = {
+                            "code": code.code,
+                            "client_id": code.client_id,
+                            "scopes": code.scopes,
+                            "expires_at": code.expires_at,
+                            "code_challenge": code.code_challenge,
+                            "redirect_uri": str(code.redirect_uri) if code.redirect_uri else None,
+                            "redirect_uri_provided_explicitly": code.redirect_uri_provided_explicitly,
+                        }
+                        if hasattr(code, "resource") and code.resource:
+                             code_dict["resource"] = code.resource
+                        data[key] = code_dict
+                
+                with open(self.auth_codes_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                logger.debug(f"Saved {len(data)} auth codes to {self.auth_codes_file}")
+        except Exception as e:
+            logger.error(f"Failed to save auth codes to disk: {e}")
+
     def register_client(self, client: OAuthClientInformationFull):
         """Register a new client and persist to disk."""
         with self._lock:
@@ -196,32 +331,66 @@ class PersistentStore:
             self.refresh_tokens[token.token] = token
         self._save_refresh_tokens()
     
+    def add_access_token(self, token: AccessToken):
+        """Add an access token and persist to disk."""
+        with self._lock:
+            self.access_tokens[token.token] = token
+        self._save_access_tokens()
+    
     def remove_refresh_token(self, token_value: str):
         """Remove a refresh token and update disk."""
         with self._lock:
             if token_value in self.refresh_tokens:
                 del self.refresh_tokens[token_value]
         self._save_refresh_tokens()
+
+    def remove_access_token(self, token_value: str):
+        """Remove an access token and update disk."""
+        with self._lock:
+            if token_value in self.access_tokens:
+                del self.access_tokens[token_value]
+        self._save_access_tokens()
     
+    def save_auth_code(self, key: str, code: AuthorizationCode):
+        """Save an authorization code (pending or complete) and update disk."""
+        with self._lock:
+            self.auth_codes[key] = code
+        self._save_auth_codes()
+
+    def delete_auth_code(self, key: str):
+        """Delete an authorization code and update disk."""
+        with self._lock:
+            if key in self.auth_codes:
+                del self.auth_codes[key]
+        self._save_auth_codes()
+
     def clear_expired_tokens(self):
         """Remove expired tokens from memory and disk."""
         current_time = time.time()
         
-        # Clear expired authorization codes (in-memory only)
+        # Clear expired authorization codes (also updates disk)
         expired_codes = [
             code for code, auth_code in self.auth_codes.items()
             if not code.startswith("pending_") and auth_code.expires_at < current_time
         ]
-        for code in expired_codes:
-            del self.auth_codes[code]
+        if expired_codes:
+            with self._lock:
+                for code in expired_codes:
+                    del self.auth_codes[code]
+            self._save_auth_codes()
+            logger.info(f"Cleared {len(expired_codes)} expired auth codes")
         
-        # Clear expired access tokens (in-memory only)
+        # Clear expired access tokens (also updates disk)
         expired_access = [
             token for token, access_token in self.access_tokens.items()
             if access_token.expires_at < current_time
         ]
-        for token in expired_access:
-            del self.access_tokens[token]
+        if expired_access:
+            with self._lock:
+                for token in expired_access:
+                    del self.access_tokens[token]
+            self._save_access_tokens()
+            logger.info(f"Cleared {len(expired_access)} expired access tokens")
         
         # Clear expired refresh tokens (also updates disk)
         expired_refresh = [
