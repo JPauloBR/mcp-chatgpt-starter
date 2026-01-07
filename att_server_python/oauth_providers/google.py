@@ -21,14 +21,14 @@ from mcp.server.auth.provider import (
 )
 
 from .base import BaseOAuthProvider, ProviderConfig
-from .custom import InMemoryStore
+from .persistent_store import PersistentStore
 
 logger = logging.getLogger(__name__)
 
 
 class GoogleOAuthProvider(BaseOAuthProvider):
     """
-    Google OAuth provider using OpenID Connect.
+    Google OAuth provider using OpenID Connect with persistent storage.
     
     This provider delegates authentication to Google, then issues its own
     tokens for MCP tool access based on the Google authentication.
@@ -38,6 +38,7 @@ class GoogleOAuthProvider(BaseOAuthProvider):
     - User profile from Google
     - Custom MCP token issuance
     - Scope mapping (Google scopes → MCP scopes)
+    - Persistent client registration and refresh tokens
     
     Setup:
     1. Create OAuth 2.0 Client ID in Google Cloud Console
@@ -53,16 +54,16 @@ class GoogleOAuthProvider(BaseOAuthProvider):
     GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
     
     def __init__(self, config: ProviderConfig):
-        """Initialize Google OAuth provider."""
+        """Initialize Google OAuth provider with persistent storage."""
         super().__init__(config)
         
         if not config.client_id or not config.client_secret:
             raise ValueError("Google provider requires client_id and client_secret")
         
-        self.store = InMemoryStore()
+        self.store = PersistentStore()
         self.google_discovery = None
         
-        logger.info(f"Google OAuth provider initialized: {config.issuer_url}")
+        logger.info(f"Google OAuth provider initialized with persistent storage: {config.issuer_url}")
     
     async def initialize(self) -> None:
         """Initialize provider by fetching Google's OIDC discovery document."""
@@ -89,9 +90,9 @@ class GoogleOAuthProvider(BaseOAuthProvider):
         self,
         client_info: OAuthClientInformationFull
     ) -> None:
-        """Register a new OAuth client."""
-        self.store.clients[client_info.client_id] = client_info
-        logger.info(f"Registered client: {client_info.client_id}")
+        """Register a new OAuth client and persist to disk."""
+        self.store.register_client(client_info)
+        logger.info(f"Registered and persisted client: {client_info.client_id}")
     
     async def authorize(
         self,
@@ -154,7 +155,9 @@ class GoogleOAuthProvider(BaseOAuthProvider):
         }
         
         google_auth_url = f"{self.GOOGLE_AUTH_URL}?{urlencode(google_params)}"
-        logger.debug(f"Redirecting to Google OAuth: {google_auth_url}")
+        logger.info(f"Redirecting to Google OAuth for client {client.client_id}")
+        logger.debug(f"Google OAuth URL: {google_auth_url}")
+        logger.debug(f"Callback URL will be: {self.issuer_url}/oauth/google/callback")
         
         return google_auth_url
     
@@ -171,6 +174,8 @@ class GoogleOAuthProvider(BaseOAuthProvider):
         Returns:
             dict with user info and temp_key for completing MCP authorization
         """
+        logger.info(f"Google OAuth callback received: state={state[:8]}...")
+        
         # Exchange code for Google tokens
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
@@ -317,12 +322,14 @@ class GoogleOAuthProvider(BaseOAuthProvider):
             resource=authorization_code.resource,
         )
         
-        self.store.refresh_tokens[refresh_token] = RefreshToken(
+        # Store and persist refresh token
+        refresh_token_obj = RefreshToken(
             token=refresh_token,
             client_id=client.client_id,
             scopes=authorization_code.scopes,
             expires_at=refresh_expires_at,
         )
+        self.store.add_refresh_token(refresh_token_obj)
         
         logger.info(f"Issued MCP tokens for Google-authenticated user (client: {client.client_id})")
         
@@ -351,7 +358,7 @@ class GoogleOAuthProvider(BaseOAuthProvider):
         
         import time
         if token.expires_at < time.time():
-            del self.store.refresh_tokens[refresh_token]
+            self.store.remove_refresh_token(refresh_token)
             return None
         
         return token
@@ -384,21 +391,23 @@ class GoogleOAuthProvider(BaseOAuthProvider):
             expires_at=access_expires_at,
         )
         
-        self.store.refresh_tokens[new_refresh_token] = RefreshToken(
+        # Store and persist new refresh token
+        new_refresh_token_obj = RefreshToken(
             token=new_refresh_token,
             client_id=client.client_id,
             scopes=granted_scopes,
             expires_at=refresh_expires_at,
         )
+        self.store.add_refresh_token(new_refresh_token_obj)
         
         if refresh_token.token in self.store.refresh_tokens:
-            del self.store.refresh_tokens[refresh_token.token]
+            self.store.remove_refresh_token(refresh_token.token)
         
         logger.info(f"Refreshed MCP tokens for client: {client.client_id}")
         
         return (
             self.store.access_tokens[new_access_token],
-            self.store.refresh_tokens[new_refresh_token]
+            new_refresh_token_obj
         )
     
     async def load_access_token(
@@ -443,7 +452,7 @@ class GoogleOAuthProvider(BaseOAuthProvider):
                 for access_token in associated_access_tokens:
                     del self.store.access_tokens[access_token]
                 
-                del self.store.refresh_tokens[token]
+                self.store.remove_refresh_token(token)
                 logger.info(f"Revoked refresh token")
                 return
     

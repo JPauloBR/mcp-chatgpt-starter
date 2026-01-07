@@ -137,28 +137,28 @@ def _modify_html_paths(html: str) -> str:
     # Track replacements for debugging
     replacements_made = 0
     
-    # Replace absolute paths
-    if 'src="/' in html or 'href="/' in html:
-        html = html.replace('src="/', f'src="{assets_url}')
-        html = html.replace('href="/', f'href="{assets_url}')
+    # Replace /assets absolute paths (avoid producing /assets/assets/...)
+    if 'src="/assets/' in html or 'href="/assets/' in html or 'srcset="/assets/' in html:
+        html = html.replace('src="/assets/', f'src="{assets_url}')
+        html = html.replace('href="/assets/', f'href="{assets_url}')
+        html = html.replace('srcset="/assets/', f'srcset="{assets_url}')
         replacements_made += 1
     
     # Replace localhost:4444 references (dev server)
+    # Only rewrite the /assets/ prefix to avoid duplicating assets in the final URL.
     if 'localhost:4444' in html:
-        html = html.replace('http://localhost:4444/', assets_url)
-        html = html.replace('https://localhost:4444/', assets_url)
+        html = html.replace('http://localhost:4444/assets/', assets_url)
+        html = html.replace('https://localhost:4444/assets/', assets_url)
         replacements_made += 1
     
-    # Replace relative paths
+    # Replace relative paths (handle ./assets/ first to avoid /assets/assets/...)
+    if 'src="./assets/' in html or 'href="./assets/' in html:
+        html = html.replace('src="./assets/', f'src="{assets_url}')
+        html = html.replace('href="./assets/', f'href="{assets_url}')
+        replacements_made += 1
     if 'src="./' in html or 'href="./' in html:
         html = html.replace('src="./', f'src="{assets_url}')
         html = html.replace('href="./', f'href="{assets_url}')
-        replacements_made += 1
-    
-    # Handle edge case: srcset attributes for responsive images
-    if 'srcset="' in html:
-        # Basic handling - may need enhancement for complex srcset
-        html = html.replace('srcset="/', f'srcset="{assets_url}')
         replacements_made += 1
     
     if replacements_made > 0:
@@ -578,12 +578,29 @@ async def startup_event():
 @app.middleware("http")
 async def log_requests(request, call_next):
     # Log incoming requests to help debug ChatGPT integration
-    logger.info(f"Incoming request: {request.method} {request.url.path}")
+    query_string = f"?{request.url.query}" if request.url.query else ""
+    logger.info(f"Incoming request: {request.method} {request.url.path}{query_string}")
     logger.debug(f"Headers: {dict(request.headers)}")
+    
+    # Log request body for OAuth endpoints (debugging)
+    if request.url.path in ["/token", "/register"] and request.method == "POST":
+        body = await request.body()
+        logger.info(f"{request.url.path} request body: {body.decode('utf-8', errors='ignore')}")
+        # Recreate request with body for downstream processing
+        from starlette.requests import Request as StarletteRequest
+        async def receive():
+            return {"type": "http.request", "body": body}
+        request = StarletteRequest(request.scope, receive)
     
     response = await call_next(request)
     
     logger.info(f"Response status: {response.status_code}")
+    
+    # Log response body for error responses
+    if response.status_code >= 400 and request.url.path in ["/token", "/authorize"]:
+        # Note: This won't work for streaming responses, only for JSON/text
+        logger.error(f"Error response for {request.url.path}: status {response.status_code}")
+    
     return response
 
 # Add middleware for tunnel compatibility (ngrok, Cloudflare, etc.)
@@ -615,6 +632,7 @@ async def add_tunnel_compatibility_headers(request, call_next):
 
 # Mount the static files directory
 app.mount("/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets")
+app.mount("/assets/assets", StaticFiles(directory=str(ASSETS_DIR)), name="assets_compat")
 
 # Add no-cache middleware for development (prevents Cloudflare caching)
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -772,15 +790,19 @@ if OAUTH_ENABLED:
     
     async def google_oauth_callback(request: Request):
         """Handle Google OAuth callback."""
+        logger.info(f"Google OAuth callback endpoint hit: {request.url}")
         from oauth_providers.google import GoogleOAuthProvider
         
         if not isinstance(oauth_provider, GoogleOAuthProvider):
+            logger.error("OAuth provider is not GoogleOAuthProvider")
             return HTMLResponse("<h1>Error: Google OAuth not configured</h1>", status_code=400)
         
         try:
             code = request.query_params.get("code")
             state = request.query_params.get("state")  # This is our temp_key
             error = request.query_params.get("error")
+            
+            logger.info(f"Callback params: code={'present' if code else 'missing'}, state={'present' if state else 'missing'}, error={error}")
             
             if error:
                 logger.error(f"Google OAuth error: {error}")

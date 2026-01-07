@@ -1,8 +1,8 @@
 """
-Custom In-Memory OAuth Provider
+Custom OAuth Provider with Persistent Storage
 
-Simple demo OAuth provider for testing and development.
-Stores all tokens in memory (lost on restart).
+OAuth provider with persistent client registration and refresh tokens.
+Authorization codes and access tokens are kept in memory (short-lived).
 """
 
 import secrets
@@ -23,6 +23,7 @@ from mcp.server.auth.provider import (
 )
 
 from .base import BaseOAuthProvider, ProviderConfig
+from .persistent_store import PersistentStore
 
 logger = logging.getLogger(__name__)
 
@@ -66,23 +67,23 @@ class InMemoryStore:
 
 class InMemoryOAuthProvider(BaseOAuthProvider):
     """
-    In-memory OAuth provider for demo/testing.
+    OAuth provider with persistent storage.
     
     Features:
-    - Dynamic client registration
+    - Dynamic client registration (persisted)
     - Authorization code flow with PKCE
     - Token issuance and refresh
     - Token revocation
-    - In-memory storage (no persistence)
+    - Persistent client registration and refresh tokens
     
-    Perfect for development and testing, not for production.
+    Client registrations and refresh tokens survive server restarts.
     """
     
     def __init__(self, config: ProviderConfig):
-        """Initialize the in-memory provider."""
+        """Initialize the provider with persistent storage."""
         super().__init__(config)
-        self.store = InMemoryStore()
-        logger.info(f"In-memory OAuth provider initialized: {config.issuer_url}")
+        self.store = PersistentStore()
+        logger.info(f"OAuth provider initialized with persistent storage: {config.issuer_url}")
     
     async def initialize(self) -> None:
         """Initialize the provider (no-op for in-memory)."""
@@ -100,19 +101,28 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         self,
         client_info: OAuthClientInformationFull
     ) -> None:
-        """Register a new OAuth client dynamically."""
+        """Register a new OAuth client and persist to disk."""
+        logger.info(f"=== CLIENT REGISTRATION ===")
+        logger.info(f"Client ID: {client_info.client_id}")
+        logger.info(f"Client Name: {client_info.client_name}")
+        logger.info(f"Redirect URIs: {[str(uri) for uri in client_info.redirect_uris]}")
+        logger.info(f"Grant Types: {client_info.grant_types if hasattr(client_info, 'grant_types') else 'Not specified'}")
+        
         # The MCP library handles client ID/secret generation
-        # We just store the client info as provided
-        self.store.clients[client_info.client_id] = client_info
-        logger.info(f"Registered client: {client_info.client_id}")
-        logger.debug(f"Client redirect URIs: {client_info.redirect_uris}")
+        # We store and persist the client info
+        self.store.register_client(client_info)
+        logger.info(f"✅ Client registered and persisted successfully")
+        logger.info(f"===========================")
     
     async def authorize(
         self,
         client: OAuthClientInformationFull,
         params: AuthorizationParams
     ) -> str:
-        """Handle authorization request and return redirect URL."""
+        """Handle authorization request and return redirect URL with authorization code.
+        
+        Auto-approves authorization for ChatGPT compatibility (no interactive consent page).
+        """
         # Validate scopes
         scopes = self.validate_scopes(params.scopes)
         
@@ -124,36 +134,38 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
                 error_description="Invalid redirect_uri"
             )
         
-        # Store authorization request temporarily (to be completed after user consent)
-        temp_key = self._generate_token(128)
-        self.store.auth_codes[f"pending_{temp_key}"] = AuthorizationCode(
-            code=temp_key,
+        # Generate authorization code immediately (auto-approve)
+        code = self._generate_token(160)
+        expires_at = time.time() + self.config.auth_code_ttl
+        
+        # Store authorization code
+        auth_code = AuthorizationCode(
+            code=code,
             scopes=scopes,
-            expires_at=time.time() + 600,  # 10 minutes to complete authorization
+            expires_at=expires_at,
             client_id=client.client_id,
             code_challenge=params.code_challenge,
             redirect_uri=params.redirect_uri,
             redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
             resource=params.resource,
         )
+        self.store.auth_codes[code] = auth_code
         
-        logger.info(f"Authorization request initiated for client: {client.client_id}")
+        logger.info(f"Generated authorization code for client: {client.client_id} (auto-approved)")
+        logger.info(f"Authorization code: {code[:16]}... (expires in {self.config.auth_code_ttl}s)")
+        logger.info(f"Redirect URI: {redirect_uri}")
+        logger.info(f"State: {params.state}")
         
-        # Redirect to consent page with all necessary parameters
-        consent_params = {
-            "client_id": client.client_id,
-            "redirect_uri": redirect_uri,
-            "state": params.state or "",
-            "scope": " ".join(scopes),
-            "code_challenge": params.code_challenge,
-            "temp_key": temp_key,
-            "provider": "custom",
-        }
+        # Construct redirect URI with authorization code
+        from mcp.server.auth.provider import construct_redirect_uri
+        redirect_url = construct_redirect_uri(
+            redirect_uri,
+            code=code,
+            state=params.state,
+        )
         
-        consent_url = f"{self.issuer_url}/oauth/authorize/page?{urlencode(consent_params)}"
-        logger.debug(f"Redirecting to consent page: {consent_url}")
-        
-        return consent_url
+        logger.info(f"Full redirect URL: {redirect_url}")
+        return redirect_url
     
     async def complete_authorization(
         self,
@@ -215,25 +227,29 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         authorization_code: str
     ) -> Optional[AuthorizationCode]:
         """Load an authorization code."""
+        logger.info(f"Loading authorization code: {authorization_code[:16]}... for client: {client.client_id}")
+        
         if authorization_code.startswith("pending_"):
-            logger.debug(f"Attempted to load pending authorization code: {authorization_code[:8]}...")
+            logger.error(f"Attempted to load pending authorization code: {authorization_code[:8]}...")
             return None
         
         auth_code = self.store.auth_codes.get(authorization_code)
         
         if not auth_code:
-            logger.debug(f"Authorization code not found: {authorization_code[:8]}...")
+            logger.error(f"Authorization code not found: {authorization_code[:16]}...")
+            logger.error(f"Available codes in store: {len(self.store.auth_codes)}")
             return None
         
         if auth_code.client_id != client.client_id:
-            logger.warning(f"Authorization code client mismatch: {authorization_code[:8]}...")
+            logger.error(f"Authorization code client mismatch: expected {auth_code.client_id}, got {client.client_id}")
             return None
         
         if auth_code.expires_at < time.time():
-            logger.debug(f"Authorization code expired: {authorization_code[:8]}...")
+            logger.error(f"Authorization code expired: {authorization_code[:16]}...")
             del self.store.auth_codes[authorization_code]
             return None
         
+        logger.info(f"Authorization code loaded successfully")
         return auth_code
     
     async def exchange_authorization_code(
@@ -242,9 +258,12 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         authorization_code: AuthorizationCode
     ) -> OAuthToken:
         """Exchange authorization code for tokens."""
+        logger.info(f"Exchanging authorization code: {authorization_code.code[:16]}... for client: {client.client_id}")
+        
         # Delete authorization code (one-time use)
         if authorization_code.code in self.store.auth_codes:
             del self.store.auth_codes[authorization_code.code]
+            logger.info(f"Deleted one-time authorization code")
         
         # Generate tokens
         access_token = self._generate_token(256)
@@ -262,14 +281,17 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
             resource=authorization_code.resource,
         )
         
-        self.store.refresh_tokens[refresh_token] = RefreshToken(
+        # Store and persist refresh token
+        refresh_token_obj = RefreshToken(
             token=refresh_token,
             client_id=client.client_id,
             scopes=authorization_code.scopes,
             expires_at=refresh_expires_at,
         )
+        self.store.add_refresh_token(refresh_token_obj)
         
-        logger.info(f"Exchanged authorization code for tokens (client: {client.client_id})")
+        logger.info(f"Successfully exchanged code for tokens (client: {client.client_id})")
+        logger.info(f"Access token expires in {self.config.access_token_ttl}s, refresh token expires in {self.config.refresh_token_ttl}s")
         
         # Return OAuthToken (standard OAuth 2.0 token response)
         return OAuthToken(
@@ -297,7 +319,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         
         if token.expires_at < time.time():
             logger.debug(f"Refresh token expired: {refresh_token[:8]}...")
-            del self.store.refresh_tokens[refresh_token]
+            self.store.remove_refresh_token(refresh_token)
             return None
         
         return token
@@ -307,7 +329,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         client: OAuthClientInformationFull,
         refresh_token: RefreshToken,
         requested_scopes: Optional[List[str]] = None
-    ) -> tuple[AccessToken, Optional[RefreshToken]]:
+    ) -> OAuthToken:
         """Exchange refresh token for new tokens."""
         # Validate requested scopes don't exceed original grant
         if requested_scopes:
@@ -330,22 +352,28 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
             expires_at=access_expires_at,
         )
         
-        self.store.refresh_tokens[new_refresh_token] = RefreshToken(
+        # Store and persist new refresh token
+        new_refresh_token_obj = RefreshToken(
             token=new_refresh_token,
             client_id=client.client_id,
             scopes=granted_scopes,
             expires_at=refresh_expires_at,
         )
+        self.store.add_refresh_token(new_refresh_token_obj)
         
         # Revoke old refresh token (token rotation)
         if refresh_token.token in self.store.refresh_tokens:
-            del self.store.refresh_tokens[refresh_token.token]
+            self.store.remove_refresh_token(refresh_token.token)
         
         logger.info(f"Refreshed tokens for client: {client.client_id}")
         
-        return (
-            self.store.access_tokens[new_access_token],
-            self.store.refresh_tokens[new_refresh_token]
+        # Return OAuthToken (standard OAuth 2.0 token response)
+        return OAuthToken(
+            access_token=new_access_token,
+            token_type="Bearer",
+            expires_in=self.config.access_token_ttl,
+            refresh_token=new_refresh_token,
+            scope=" ".join(granted_scopes),
         )
     
     async def load_access_token(
@@ -394,7 +422,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
                     del self.store.access_tokens[access_token]
                     logger.debug(f"Revoked associated access token: {access_token[:8]}...")
                 
-                del self.store.refresh_tokens[token]
+                self.store.remove_refresh_token(token)
                 logger.info(f"Revoked refresh token: {token[:8]}...")
                 return
     

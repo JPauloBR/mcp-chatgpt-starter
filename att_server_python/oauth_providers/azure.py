@@ -21,14 +21,14 @@ from mcp.server.auth.provider import (
 )
 
 from .base import BaseOAuthProvider, ProviderConfig
-from .custom import InMemoryStore
+from .persistent_store import PersistentStore
 
 logger = logging.getLogger(__name__)
 
 
 class AzureEntraIDProvider(BaseOAuthProvider):
     """
-    Azure Entra ID (Microsoft Identity Platform) OAuth provider.
+    Azure Entra ID (Microsoft Identity Platform) OAuth provider with persistent storage.
     
     This provider delegates authentication to Azure Entra ID, then issues
     its own tokens for MCP tool access based on the Azure authentication.
@@ -39,6 +39,7 @@ class AzureEntraIDProvider(BaseOAuthProvider):
     - User profile from Microsoft Graph
     - Custom MCP token issuance
     - Scope mapping (Azure scopes → MCP scopes)
+    - Persistent client registration and refresh tokens
     
     Setup:
     1. Register an application in Azure Portal
@@ -68,9 +69,9 @@ class AzureEntraIDProvider(BaseOAuthProvider):
         self.token_endpoint = f"{self.authority}/oauth2/v2.0/token"
         self.userinfo_endpoint = "https://graph.microsoft.com/v1.0/me"
         
-        self.store = InMemoryStore()
+        self.store = PersistentStore()
         
-        logger.info(f"Azure Entra ID provider initialized: tenant={self.tenant_id}")
+        logger.info(f"Azure Entra ID provider initialized with persistent storage: tenant={self.tenant_id}")
     
     async def initialize(self) -> None:
         """Initialize provider (Azure doesn't require discovery)."""
@@ -84,9 +85,9 @@ class AzureEntraIDProvider(BaseOAuthProvider):
         self,
         client_info: OAuthClientInformationFull
     ) -> None:
-        """Register a new OAuth client."""
-        self.store.clients[client_info.client_id] = client_info
-        logger.info(f"Registered client: {client_info.client_id}")
+        """Register a new OAuth client and persist to disk."""
+        self.store.register_client(client_info)
+        logger.info(f"Registered and persisted client: {client_info.client_id}")
     
     async def authorize(
         self,
@@ -312,12 +313,14 @@ class AzureEntraIDProvider(BaseOAuthProvider):
             resource=authorization_code.resource,
         )
         
-        self.store.refresh_tokens[refresh_token] = RefreshToken(
+        # Store and persist refresh token
+        refresh_token_obj = RefreshToken(
             token=refresh_token,
             client_id=client.client_id,
             scopes=authorization_code.scopes,
             expires_at=refresh_expires_at,
         )
+        self.store.add_refresh_token(refresh_token_obj)
         
         logger.info(f"Issued MCP tokens for Azure-authenticated user (client: {client.client_id})")
         
@@ -346,7 +349,7 @@ class AzureEntraIDProvider(BaseOAuthProvider):
         
         import time
         if token.expires_at < time.time():
-            del self.store.refresh_tokens[refresh_token]
+            self.store.remove_refresh_token(refresh_token)
             return None
         
         return token
@@ -379,21 +382,23 @@ class AzureEntraIDProvider(BaseOAuthProvider):
             expires_at=access_expires_at,
         )
         
-        self.store.refresh_tokens[new_refresh_token] = RefreshToken(
+        # Store and persist new refresh token
+        new_refresh_token_obj = RefreshToken(
             token=new_refresh_token,
             client_id=client.client_id,
             scopes=granted_scopes,
             expires_at=refresh_expires_at,
         )
+        self.store.add_refresh_token(new_refresh_token_obj)
         
         if refresh_token.token in self.store.refresh_tokens:
-            del self.store.refresh_tokens[refresh_token.token]
+            self.store.remove_refresh_token(refresh_token.token)
         
         logger.info(f"Refreshed MCP tokens for client: {client.client_id}")
         
         return (
             self.store.access_tokens[new_access_token],
-            self.store.refresh_tokens[new_refresh_token]
+            new_refresh_token_obj
         )
     
     async def load_access_token(
@@ -438,7 +443,7 @@ class AzureEntraIDProvider(BaseOAuthProvider):
                 for access_token in associated_access_tokens:
                     del self.store.access_tokens[access_token]
                 
-                del self.store.refresh_tokens[token]
+                self.store.remove_refresh_token(token)
                 logger.info(f"Revoked refresh token")
                 return
     
