@@ -154,6 +154,19 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         )
         self.store.save_auth_code(pending_key, auth_code)
         
+        # Store state separately (not in AuthorizationCode dataclass)
+        # We'll retrieve it when completing authorization
+        if params.state:
+            self.store.save_auth_code(f"state_{temp_key}", AuthorizationCode(
+                code=params.state,  # Store state in the code field
+                scopes=[],
+                expires_at=expires_at,
+                client_id=client.client_id,
+                code_challenge="",  # Required string field
+                redirect_uri=params.redirect_uri,
+                redirect_uri_provided_explicitly=False,
+            ))
+        
         logger.info(f"Initiating interactive authorization for client: {client.client_id}")
         logger.debug(f"Temp key: {temp_key}")
         
@@ -186,8 +199,15 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
             logger.error(f"Pending authorization request not found: {temp_key[:8]}...")
             return None
         
-        # Remove pending request
+        # Retrieve stored state
+        state_key = f"state_{temp_key}"
+        state_entry = self.store.auth_codes.get(state_key)
+        stored_state = state_entry.code if state_entry else None
+        
+        # Remove pending request and state
         self.store.delete_auth_code(pending_key)
+        if state_entry:
+            self.store.delete_auth_code(state_key)
         
         if not approved:
             logger.info(f"Authorization denied for client: {pending_request.client_id}")
@@ -195,6 +215,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
                 str(pending_request.redirect_uri),
                 error="access_denied",
                 error_description="User denied authorization",
+                state=stored_state,
             )
             return redirect_url
         
@@ -216,13 +237,14 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         # Store authorization code
         self.store.save_auth_code(code, auth_code)
         logger.info(f"Authorization approved for client: {pending_request.client_id}")
+        logger.info(f"Returning state to client: {stored_state[:20] if stored_state else 'None'}...")
         logger.debug(f"Code: {code[:8]}... (expires in {self.config.auth_code_ttl}s)")
         
-        # Return redirect URI with code
+        # Return redirect URI with code and state
         redirect_url = construct_redirect_uri(
             str(pending_request.redirect_uri),
             code=code,
-            state=None,
+            state=stored_state,
         )
         
         return redirect_url

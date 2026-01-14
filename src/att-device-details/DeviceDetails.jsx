@@ -2,6 +2,30 @@ import React, { useState } from "react";
 import { ChevronLeft, ChevronRight, Heart, Share, Maximize2, Bookmark, Info } from "lucide-react";
 import deviceData from "./device-data.json";
 
+// Import base64-inlined images for ChatGPT widget compatibility
+import {
+  iphone_17_pro_max_1,
+  iphone_17_pro_max_2,
+  iphone_17_pro_max_3,
+  iphone_17_pro_max_4,
+  galaxy_s25_ultra_1,
+  galaxy_s25_ultra_2,
+  galaxy_s25_ultra_3,
+} from "./images.generated.js";
+
+// Map image paths to base64 data URLs
+const imageMap = {
+  "./images/iphone-17-pro-max-1.png": iphone_17_pro_max_1,
+  "./images/iphone-17-pro-max-2.png": iphone_17_pro_max_2,
+  "./images/iphone-17-pro-max-3.png": iphone_17_pro_max_3,
+  "./images/iphone-17-pro-max-4.png": iphone_17_pro_max_4,
+  "./images/galaxy-s25-ultra-1.png": galaxy_s25_ultra_1,
+  "./images/galaxy-s25-ultra-2.png": galaxy_s25_ultra_2,
+  "./images/galaxy-s25-ultra-3.png": galaxy_s25_ultra_3,
+};
+
+const resolveImage = (path) => imageMap[path] || path;
+
 export default function DeviceDetails({ deviceId = "iphone-17-pro-max" }) {
   const device = deviceData.devices[deviceId] || deviceData.devices["iphone-17-pro-max"];
   const [selectedColor, setSelectedColor] = useState(device.colors.find(c => c.selected) || device.colors[0]);
@@ -44,7 +68,7 @@ export default function DeviceDetails({ deviceId = "iphone-17-pro-max" }) {
 
           <div className="relative aspect-square flex items-center justify-center my-8">
             <img 
-              src={device.gallery[currentImageIndex]} 
+              src={resolveImage(device.gallery[currentImageIndex])} 
               alt={`${device.name} in ${selectedColor.name}`}
               className="max-h-full max-w-full object-contain mix-blend-multiply"
             />
@@ -74,7 +98,7 @@ export default function DeviceDetails({ deviceId = "iphone-17-pro-max" }) {
                   currentImageIndex === idx ? "border-blue-600" : "border-transparent hover:border-gray-300"
                 }`}
               >
-                <img src={img} alt="" className="w-full h-full object-contain" />
+                <img src={resolveImage(img)} alt="" className="w-full h-full object-contain" />
               </button>
             ))}
           </div>

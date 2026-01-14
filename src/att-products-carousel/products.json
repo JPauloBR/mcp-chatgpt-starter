@@ -7,7 +7,7 @@
       "description": "6.9-inch display with Apple Intelligence. Pro camera system with 5x Telephoto.",
       "price": "$2.78/mo.",
       "fullPrice": "$33.34/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/defaultimage/cosmic-orange-hero-zoom.png",
+      "thumbnail": "./images/iphone-17-pro-max.png",
       "color": "Cosmic Orange",
       "rating": 4.8
     },
@@ -18,7 +18,7 @@
       "description": "6.9-inch Dynamic AMOLED display. 200MP camera with 100x Space Zoom.",
       "price": "$5.56/mo.",
       "fullPrice": "$36.12/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/defaultimage/titanium-black-hero-zoom.png",
+      "thumbnail": "./images/samsung-s25-ultra.png",
       "color": "Titanium Black",
       "rating": 4.7
     },
@@ -29,7 +29,7 @@
       "description": "6.7-inch Super Retina XDR display. A17 Pro chip. Pro camera system.",
       "price": "$2.78/mo.",
       "fullPrice": "$33.34/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-15-pro-max/carousel/natural-titanium-1.png",
+      "thumbnail": "./images/iphone-15-pro-max.png",
       "color": "Natural Titanium",
       "rating": 4.9
     },
@@ -40,7 +40,7 @@
       "description": "6.3-inch LTPO OLED display. Google Tensor G4. Advanced AI with Gemini.",
       "price": "$2.78/mo.",
       "fullPrice": "$27.78/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/google/google-pixel-9a/defaultimage/obsidian-hero-zoom.png",
+      "thumbnail": "./images/google-pixel-9a.png",
       "color": "Obsidian",
       "rating": 4.6
     },
@@ -51,7 +51,7 @@
       "description": "7.6-inch foldable display. Enhanced multitasking with Flex Mode.",
       "price": "$8.34/mo.",
       "fullPrice": "$50.00/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-z-fold6/defaultimage/navy-hero-zoom.png",
+      "thumbnail": "./images/samsung-fold-6.png",
       "color": "Navy",
       "rating": 4.5
     },
@@ -62,7 +62,7 @@
       "description": "6.1-inch Super Retina XDR display. A16 Bionic chip. Advanced camera.",
       "price": "$0.00/mo.",
       "fullPrice": "$22.23/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-15/carousel/black-1.png",
+      "thumbnail": "./images/iphone-15.png",
       "color": "Black",
       "rating": 4.8
     },
@@ -73,7 +73,7 @@
       "description": "13-inch Ultra Retina XDR display. M5 chip. ProMotion technology.",
       "price": "$27.78/mo.",
       "fullPrice": "$33.34/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/tablets/apple/apple-ipad-pro-13-inch-m5-2025/defaultimage/space-black-hero-zoom.png",
+      "thumbnail": "./images/ipad-pro-13.png",
       "color": "Space Black",
       "rating": 4.9
     },
@@ -84,7 +84,7 @@
       "description": "6.1-inch Super Retina XDR display. A15 Bionic chip. Great value.",
       "price": "$0.00/mo.",
       "fullPrice": "$19.45/mo.",
-      "thumbnail": "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-14/carousel/midnight/midnight-1.png",
+      "thumbnail": "./images/iphone-14.png",
       "color": "Midnight",
       "rating": 4.7
     }

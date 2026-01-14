@@ -11,10 +11,10 @@
       "offerText": "Get up to $1,100 off this device",
       "offerSubtext": "Save with eligible trade-in and qualifying wireless plan. Other terms apply.",
       "gallery": [
-        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/defaultimage/cosmic-orange-hero-zoom.png",
-        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/carousel/cosmic-orange-1.png",
-        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/carousel/cosmic-orange-2.png",
-        "https://www.att.com/scmsassets/global/devices/phones/apple/apple-iphone-17-pro-max/carousel/cosmic-orange-3.png"
+        "./images/iphone-17-pro-max-1.png",
+        "./images/iphone-17-pro-max-2.png",
+        "./images/iphone-17-pro-max-3.png",
+        "./images/iphone-17-pro-max-4.png"
       ],
       "models": [
         { "id": "iphone-17-pro", "name": "iPhone 17 Pro", "display": "6.3-inch display" },
@@ -46,9 +46,9 @@
       "offerText": "Get up to $1,000 off this device",
       "offerSubtext": "Save with eligible trade-in and qualifying wireless plan. Other terms apply.",
       "gallery": [
-        "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/defaultimage/titanium-black-hero-zoom.png",
-        "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/carousel/titanium-black-1.png",
-        "https://www.att.com/scmsassets/global/devices/phones/samsung/samsung-galaxy-s25-ultra/carousel/titanium-black-2.png"
+        "./images/galaxy-s25-ultra-1.png",
+        "./images/galaxy-s25-ultra-2.png",
+        "./images/galaxy-s25-ultra-3.png"
       ],
       "models": [
         { "id": "samsung-s25", "name": "Galaxy S25", "display": "6.2-inch display" },

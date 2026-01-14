@@ -1,4 +1,5 @@
 import React from "react";
+import { resolveImage } from "./imageResolver.js";
 
 export default function FilmStrip({ album, selectedIndex, onSelect }) {
   return (
@@ -17,7 +18,7 @@ export default function FilmStrip({ album, selectedIndex, onSelect }) {
         >
           <div className="aspect-[5/3] rounded-lg overflow-hidden w-full">
             <img
-              src={photo.url}
+              src={resolveImage(photo.url)}
               alt={photo.title || `Photo ${idx + 1}`}
               className="h-full w-full object-cover"
               loading="lazy"

@@ -1,4 +1,5 @@
 import React from "react";
+import { resolveImage } from "./imageResolver.js";
 
 function AlbumCard({ album, onSelect }) {
   return (
@@ -9,7 +10,7 @@ function AlbumCard({ album, onSelect }) {
     >
       <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl shadow-lg">
         <img
-          src={album.cover}
+          src={resolveImage(album.cover)}
           alt={album.title}
           className="h-full w-full object-cover"
           loading="lazy"

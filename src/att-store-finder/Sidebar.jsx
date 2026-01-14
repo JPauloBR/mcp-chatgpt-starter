@@ -4,6 +4,29 @@ import { useOpenAiGlobal } from "../use-openai-global";
 import { Filter, Settings2, Star } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
+// Fallback placeholder for broken images
+function ImageWithFallback({ src, alt, className }) {
+  const [error, setError] = React.useState(false);
+  
+  if (error || !src) {
+    // Show AT&T branded placeholder
+    return (
+      <div className={`${className} bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center`}>
+        <span className="text-white font-bold text-xs">AT&T</span>
+      </div>
+    );
+  }
+  
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setError(true)}
+    />
+  );
+}
+
 function PlaceListItem({ place, isSelected, onClick }) {
   return (
     <div
@@ -21,7 +44,7 @@ function PlaceListItem({ place, isSelected, onClick }) {
           className="w-full text-left py-3 transition flex gap-3 items-center"
           onClick={onClick}
         >
-          <img
+          <ImageWithFallback
             src={place.thumbnail}
             alt={place.name}
             className="h-16 w-16 rounded-lg object-cover flex-none"

@@ -26,6 +26,7 @@ const targets: string[] = [
   "att-internet-backup-offer",
   "att-fiber-coverage-checker",
   "att-payment",
+  "att-device-details",
 ];
 const builtNames: string[] = [];
 
@@ -105,6 +106,7 @@ for (const file of entries) {
         },
       },
     ],
+    base: "/assets/",
     esbuild: {
       jsx: "automatic",
       jsxImportSource: "react",

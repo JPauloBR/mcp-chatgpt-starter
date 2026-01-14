@@ -1,0 +1,13 @@
+{
+  "d7516cbe-97cc-46c4-9d89-ad25311a36e3": {
+    "client_id": "d7516cbe-97cc-46c4-9d89-ad25311a36e3",
+    "client_name": "ChatGPT",
+    "redirect_uris": [
+      "https://chatgpt.com/connector_platform_oauth_redirect"
+    ],
+    "grant_types": [
+      "authorization_code",
+      "refresh_token"
+    ]
+  }
+}

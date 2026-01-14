@@ -1,5 +1,29 @@
 import React from "react";
 import { Star } from "lucide-react";
+import {
+  iphone_17_pro_max,
+  samsung_s25_ultra,
+  iphone_15_pro_max,
+  google_pixel_9a,
+  samsung_fold_6,
+  iphone_15,
+  ipad_pro_13,
+  iphone_14,
+} from "./images.generated.js";
+
+// Map image paths to base64 data URLs
+const imageMap = {
+  "./images/iphone-17-pro-max.png": iphone_17_pro_max,
+  "./images/samsung-s25-ultra.png": samsung_s25_ultra,
+  "./images/iphone-15-pro-max.png": iphone_15_pro_max,
+  "./images/google-pixel-9a.png": google_pixel_9a,
+  "./images/samsung-fold-6.png": samsung_fold_6,
+  "./images/iphone-15.png": iphone_15,
+  "./images/ipad-pro-13.png": ipad_pro_13,
+  "./images/iphone-14.png": iphone_14,
+};
+
+const resolveImage = (path) => imageMap[path] || path;
 
 export default function PlaceCard({ place }) {
   if (!place) return null;
@@ -7,7 +31,7 @@ export default function PlaceCard({ place }) {
     <div className="min-w-[240px] select-none max-w-[240px] w-[70vw] sm:w-[240px] self-stretch flex flex-col bg-white rounded-2xl border border-black/10 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       <div className="w-full bg-gray-50 p-4">
         <img
-          src={place.thumbnail}
+          src={resolveImage(place.thumbnail)}
           alt={place.name}
           className="w-full aspect-square object-contain"
         />

@@ -2,6 +2,7 @@ import React from "react";
 import { useMaxHeight } from "../use-max-height";
 import { X } from "lucide-react";
 import FilmStrip from "./FilmStrip";
+import { resolveImage } from "./imageResolver.js";
 
 export default function FullscreenViewer({ album, onClose }) {
   const maxHeight = useMaxHeight() ?? undefined;
@@ -45,7 +46,7 @@ export default function FullscreenViewer({ album, onClose }) {
           <div className="flex-1 flex items-center justify-center p-8 lg:p-12 bg-gray-50">
             {photo ? (
               <img
-                src={photo.url}
+                src={resolveImage(photo.url)}
                 alt={photo.title || album.title}
                 className="max-w-full max-h-[400px] lg:max-h-[500px] object-contain"
               />
@@ -124,7 +125,7 @@ export default function FullscreenViewer({ album, onClose }) {
                       }
                     >
                       <img
-                        src={p.url}
+                        src={resolveImage(p.url)}
                         alt={p.title}
                         className="w-full h-full object-cover"
                       />

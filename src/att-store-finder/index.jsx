@@ -74,10 +74,11 @@ export default function App() {
     requestAnimationFrame(() => mapObj.current.resize());
 
     // or keep it in sync with window resizes
-    window.addEventListener("resize", mapObj.current.resize);
+    const onResize = () => mapObj.current?.resize();
+    window.addEventListener("resize", onResize);
 
     return () => {
-      window.removeEventListener("resize", mapObj.current.resize);
+      window.removeEventListener("resize", onResize);
       mapObj.current.remove();
     };
     // eslint-disable-next-line

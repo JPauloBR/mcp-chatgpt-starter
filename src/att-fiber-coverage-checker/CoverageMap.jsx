@@ -184,7 +184,7 @@ export default function CoverageMap({
   return (
     <div className="relative w-full h-full">
       <div ref={mapRef} className="absolute inset-0 w-full h-full" />
-      
+
       {/* Legend */}
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 z-20">
         <h3 className="font-semibold text-sm text-gray-900 mb-3">Coverage Map</h3>
@@ -199,7 +199,7 @@ export default function CoverageMap({
           </div>
           <div className="flex items-center space-x-2">
             <svg width="16" height="16" viewBox="0 0 16 16">
-              <circle cx="8" cy="8" r="7" fill="white" stroke="#7c3aed" strokeWidth="2"/>
+              <circle cx="8" cy="8" r="7" fill="white" stroke="#7c3aed" strokeWidth="2" />
             </svg>
             <span className="text-sm text-gray-700">Your location</span>
           </div>
@@ -208,11 +208,8 @@ export default function CoverageMap({
 
       <style>{`
         .house-marker {
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          background: transparent;
+          border: none;
         }
       `}</style>
     </div>

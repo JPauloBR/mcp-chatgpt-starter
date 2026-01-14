@@ -506,7 +506,31 @@
     </div>
     
     <script>
+        // Prevent double form submission
+        let formSubmitted = false;
+        
+        document.getElementById('authForm').addEventListener('submit', function(e) {
+            if (formSubmitted) {
+                e.preventDefault();
+                return false;
+            }
+            formSubmitted = true;
+            
+            // Disable buttons to prevent double-click
+            const authorizeBtn = document.querySelector('.btn-authorize');
+            const denyBtn = document.querySelector('.btn-deny');
+            if (authorizeBtn) {
+                authorizeBtn.disabled = true;
+                authorizeBtn.textContent = 'Authorizing...';
+                authorizeBtn.style.opacity = '0.7';
+            }
+            if (denyBtn) {
+                denyBtn.disabled = true;
+            }
+        });
+        
         function denyAuthorization() {
+            if (formSubmitted) return;
             document.getElementById('approvedInput').value = 'false';
             document.getElementById('authForm').submit();
         }

@@ -120,6 +120,93 @@ def _validate_assets_exist() -> None:
     logger.info(f"Found {len(html_files)} HTML asset files in {ASSETS_DIR}")
 
 
+def _get_widget_domain() -> str:
+    """Extract domain from SERVER_URL for widget metadata."""
+    from urllib.parse import urlparse
+    parsed = urlparse(SERVER_URL)
+    return parsed.netloc or "localhost:8000"
+
+
+def _get_widget_csp() -> Dict[str, Any]:
+    """Generate Content Security Policy object for widgets.
+    
+    Per OpenAI docs, CSP must be an object with domain arrays:
+    - connect_domains: hosts the widget can fetch from
+    - resource_domains: hosts for static assets (images, fonts, scripts)
+    - redirect_domains: hosts allowed for openExternal redirects
+    - frame_domains: hosts the widget may embed as iframes (discouraged)
+    """
+    scheme = "https" if "https" in SERVER_URL else "http"
+    domain = _get_widget_domain()
+    origin = f"{scheme}://{domain}"
+    
+    # Mapbox GL JS requires these domains for map rendering
+    mapbox_connect = [
+        "https://api.mapbox.com",
+        "https://events.mapbox.com",
+        "https://*.tiles.mapbox.com",
+        "https://a.tiles.mapbox.com",
+        "https://b.tiles.mapbox.com",
+        "https://c.tiles.mapbox.com",
+        "https://d.tiles.mapbox.com",
+    ]
+    
+    mapbox_resources = [
+        "https://api.mapbox.com",
+        "https://*.tiles.mapbox.com",
+        "https://a.tiles.mapbox.com",
+        "https://b.tiles.mapbox.com",
+        "https://c.tiles.mapbox.com",
+        "https://d.tiles.mapbox.com",
+    ]
+    
+    return {
+        "connect_domains": [origin] + mapbox_connect,
+        "resource_domains": [origin, "https://*.oaistatic.com", "https://images.unsplash.com"] + mapbox_resources,
+    }
+
+
+def _get_widget_csp_string() -> str:
+    """Generate CSP string for HTML meta tag (browser enforcement)."""
+    scheme = "https" if "https" in SERVER_URL else "http"
+    domain = _get_widget_domain()
+    origin = f"{scheme}://{domain}"
+    
+    # Mapbox domains for CSP string
+    mapbox_domains = "https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com"
+    
+    csp_directives = [
+        "default-src 'self'",
+        f"script-src 'self' 'unsafe-inline' 'unsafe-eval' {origin} blob:",
+        f"style-src 'self' 'unsafe-inline' {origin}",
+        f"img-src 'self' data: blob: {origin} https://images.unsplash.com {mapbox_domains}",
+        f"font-src 'self' data: {origin}",
+        f"connect-src 'self' {origin} https: {mapbox_domains}",
+        "worker-src 'self' blob:",
+        "child-src 'self' blob:",
+        "frame-ancestors 'self' https://chatgpt.com https://*.openai.com",
+        "base-uri 'self'",
+        "form-action 'self'",
+    ]
+    return "; ".join(csp_directives)
+
+
+def _inject_csp_meta_tag(html: str) -> str:
+    """Inject CSP meta tag into HTML head for ChatGPT widget compliance."""
+    csp = _get_widget_csp_string()
+    csp_meta = f'<meta http-equiv="Content-Security-Policy" content="{csp}">'
+    
+    # Insert CSP meta tag after <head>
+    if '<head>' in html:
+        html = html.replace('<head>', f'<head>\n{csp_meta}', 1)
+    elif '<head ' in html:
+        # Handle <head with attributes
+        head_end = html.find('>', html.find('<head ')) + 1
+        html = html[:head_end] + f'\n{csp_meta}' + html[head_end:]
+    
+    return html
+
+
 def _modify_html_paths(html: str) -> str:
     """Modify asset paths to use the Python server's /assets endpoint.
     
@@ -180,7 +267,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-store-locator.html",
         invoking="Locating AT&T stores and services",
         invoked="Found AT&T locations",
-        html=_modify_html_paths(_load_widget_html("att-store-finder")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-store-finder"))),
         response_text="Displayed AT&T store locations with available products and services!",
     ),
     ATTWidget(
@@ -189,7 +276,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-device-details.html",
         invoking="Loading device details",
         invoked="Device details loaded",
-        html=_modify_html_paths(_load_widget_html("att-device-details")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-device-details"))),
         response_text="Here are the details for the device you selected.",
     ),
     ATTWidget(
@@ -198,7 +285,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-products-carousel.html",
         invoking="Loading AT&T products",
         invoked="Products loaded",
-        html=_modify_html_paths(_load_widget_html("att-products-carousel")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-products-carousel"))),
         response_text="Displayed AT&T products carousel with cell phones, plans, and accessories!",
     ),
     ATTWidget(
@@ -207,7 +294,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-services-gallery.html",
         invoking="Loading AT&T services",
         invoked="Services loaded",
-        html=_modify_html_paths(_load_widget_html("att-products-albums")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-products-albums"))),
         response_text="Displayed AT&T services including Wireless, Fiber, and Internet Air!",
     ),
     ATTWidget(
@@ -216,7 +303,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-plans-list.html",
         invoking="Loading plan options",
         invoked="Plans loaded",
-        html=_modify_html_paths(_load_widget_html("att-plans-list")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-plans-list"))),
         response_text="Displayed AT&T wireless plans with pricing and features!",
     ),
     ATTWidget(
@@ -225,7 +312,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-for-you.html",
         invoking="Loading personalized recommendations",
         invoked="Recommendations loaded",
-        html=_modify_html_paths(_load_widget_html("att-for-you")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-for-you"))),
         response_text="Displayed personalized AT&T offers and recommendations tailored to your account!",
     ),
     ATTWidget(
@@ -234,7 +321,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-internet-backup-offer.html",
         invoking="Loading Internet Backup offer",
         invoked="Offer loaded",
-        html=_modify_html_paths(_load_widget_html("att-internet-backup-offer")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-internet-backup-offer"))),
         response_text="Displayed Internet Backup offer - stay connected even during outages!",
     ),
     ATTWidget(
@@ -243,7 +330,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-fiber-coverage-checker.html",
         invoking="Checking AT&T Fiber and Internet Air availability",
         invoked="Coverage checked",
-        html=_modify_html_paths(_load_widget_html("att-fiber-coverage-checker")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-fiber-coverage-checker"))),
         response_text="Displayed AT&T Fiber and Internet Air coverage map with availability at your location!",
     ),
     ATTWidget(
@@ -252,7 +339,7 @@ widgets: List[ATTWidget] = [
         template_uri="ui://widget/att-make-payment.html",
         invoking="Opening secure payment interface",
         invoked="Payment interface ready",
-        html=_modify_html_paths(_load_widget_html("att-payment")),
+        html=_inject_csp_meta_tag(_modify_html_paths(_load_widget_html("att-payment"))),
         response_text="Opening AT&T payment interface. You can securely enter your account information and payment details in the form below.",
     ),
 ]
@@ -485,12 +572,19 @@ def _resource_description(widget: ATTWidget) -> str:
 
 
 def _tool_meta(widget: ATTWidget) -> Dict[str, Any]:
+    csp = _get_widget_csp()
+    # Domain must be full URL with scheme per OpenAI docs
+    scheme = "https" if "https" in SERVER_URL else "http"
+    domain = f"{scheme}://{_get_widget_domain()}"
     return {
         "openai/outputTemplate": widget.template_uri,
         "openai/toolInvocation/invoking": widget.invoking,
         "openai/toolInvocation/invoked": widget.invoked,
         "openai/widgetAccessible": True,
-        "openai/resultCanProduceWidget": True
+        "openai/resultCanProduceWidget": True,
+        # Per OpenAI docs: widgetDomain is full URL, widgetCSP is object with domain arrays
+        "openai/widgetDomain": domain,
+        "openai/widgetCSP": csp,
     }
 
 
@@ -792,6 +886,10 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        # Only add CSP header for asset requests, not OAuth pages
+        # OAuth pages need to allow form-action to the server and Cloudflare scripts
+        if request.url.path.startswith("/assets"):
+            response.headers["Content-Security-Policy"] = _get_widget_csp_string()
         return response
 
 app.add_middleware(NoCacheMiddleware)
@@ -925,7 +1023,6 @@ if OAUTH_ENABLED:
             # Get form data
             form = await request.form()
             temp_key = form.get("temp_key")
-            state = form.get("state", "")
             approved = form.get("approved", "true") == "true"
             
             if not temp_key:
@@ -933,17 +1030,21 @@ if OAUTH_ENABLED:
             
             logger.info(f"Processing authorization approval: approved={approved}, temp_key={temp_key[:8]}...")
             
-            # Complete authorization
+            # Complete authorization (state is now handled internally)
             redirect_url = await oauth_provider.complete_authorization(temp_key, approved)
             
             if not redirect_url:
-                return HTMLResponse("<h1>Error: Authorization request expired or invalid</h1>", status_code=400)
-            
-            # Add state parameter if present
-            if state and "?" in redirect_url:
-                redirect_url += f"&state={state}"
-            elif state:
-                redirect_url += f"?state={state}"
+                # This is likely a duplicate submission - the auth was already processed
+                # Return a friendly message instead of an error
+                logger.warning(f"Authorization request already processed or expired: {temp_key[:8]}...")
+                return HTMLResponse(
+                    "<html><body style='font-family: system-ui; text-align: center; padding: 50px;'>"
+                    "<h2>Authorization Already Processed</h2>"
+                    "<p>This authorization request has already been completed.</p>"
+                    "<p>You can close this window and return to the application.</p>"
+                    "</body></html>",
+                    status_code=200  # Not an error, just already done
+                )
             
             logger.info(f"Redirecting to: {redirect_url}")
             

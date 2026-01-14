@@ -22,6 +22,7 @@ export default defineConfig({
     minify: "esbuild",
     outDir: "assets",
     assetsDir: ".",
+    assetsInlineLimit: 600000,
     rollupOptions: {
       input: inputs,
       preserveEntrySignatures: "strict",

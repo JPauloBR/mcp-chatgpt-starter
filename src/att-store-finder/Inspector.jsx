@@ -2,6 +2,28 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Star, X } from "lucide-react";
 
+// Fallback placeholder for broken images
+function ImageWithFallback({ src, alt, className }) {
+  const [error, setError] = React.useState(false);
+  
+  if (error || !src) {
+    return (
+      <div className={`${className} bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center`}>
+        <span className="text-white font-bold text-2xl">AT&T</span>
+      </div>
+    );
+  }
+  
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setError(true)}
+    />
+  );
+}
+
 export default function Inspector({ place, onClose }) {
   if (!place) return null;
   return (
@@ -22,7 +44,7 @@ export default function Inspector({ place, onClose }) {
       </button>
       <div className="relative h-full overflow-y-auto rounded-none xl:rounded-3xl bg-white text-black xl:shadow-xl xl:ring ring-black/10">
         <div className="relative mt-2 xl:mt-0 px-2 xl:px-0">
-          <img
+          <ImageWithFallback
             src={place.thumbnail}
             alt={place.name}
             className="w-full rounded-3xl xl:rounded-none h-80 object-cover xl:rounded-t-2xl"
