@@ -36,6 +36,93 @@ The MCP servers in this demo highlight how each tool can light up widgets by com
 - `instructions/` – Comprehensive guides for setup, deployment, OAuth, and troubleshooting.
 - `build-all.mts` – Vite build orchestrator that produces hashed bundles for every widget entrypoint.
 
+## Technology Stack
+
+This project uses a modern full-stack architecture combining Python backend services with React-based UI widgets.
+
+### Frontend (UI Widgets)
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **React** | 19.x | Core UI framework for building interactive widgets |
+| **TypeScript** | 5.9+ | Type-safe JavaScript for improved developer experience |
+| **Vite** | 7.x | Lightning-fast build tool and dev server |
+| **TailwindCSS** | 4.x | Utility-first CSS framework for styling |
+| **Framer Motion** | 12.x | Animation library for smooth UI transitions |
+| **React Three Fiber** | 9.x | React renderer for Three.js (3D solar system widget) |
+| **Three.js** | 0.179+ | 3D graphics library |
+| **Mapbox GL** | 3.x | Interactive maps for store locator widget |
+| **Leaflet** | 1.9+ | Alternative mapping library |
+| **Lucide React** | 0.536+ | Icon library |
+| **Embla Carousel** | 8.x | Carousel component for product browsing |
+| **Zod** | 4.x | Schema validation |
+| **React Router** | 7.x | Client-side routing |
+| **React Intl** | 7.x | Internationalization support |
+
+### Backend (MCP Server)
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **Python** | 3.10+ | Backend runtime |
+| **FastAPI** | 0.115+ | High-performance async web framework |
+| **FastMCP** | 0.1+ | Model Context Protocol SDK for Python |
+| **Uvicorn** | 0.30+ | ASGI server for FastAPI |
+| **Pydantic** | 2.x | Data validation using Python type hints |
+| **Jinja2** | 3.1+ | HTML templating for OAuth consent pages |
+| **HTTPX** | 0.27+ | Async HTTP client |
+| **python-dotenv** | 1.0+ | Environment variable management |
+
+### OAuth 2.0 Implementation
+
+The server includes a **custom OAuth 2.0 provider** with support for:
+
+- **Dynamic Client Registration** – ChatGPT auto-registers as an OAuth client
+- **Authorization Code Flow with PKCE** – Secure authentication flow
+- **Token Management** – Access tokens, refresh tokens, and revocation
+- **Persistent Storage** – JSON-based storage for OAuth data (clients, tokens, auth codes)
+- **Multiple Provider Support** – Custom, Google OAuth, and Azure Entra ID
+
+### Build & Development Tools
+
+| Tool | Purpose |
+|------|---------|
+| **pnpm** | Fast, disk-efficient package manager |
+| **tsx** | TypeScript execution for build scripts |
+| **esbuild** | Fast JavaScript bundler (via Vite) |
+| **fast-glob** | File pattern matching for multi-entry builds |
+| **serve** | Static file server for previewing built assets |
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         ChatGPT Client                          │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ MCP Protocol (HTTP/SSE)
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    MCP Server (FastAPI + FastMCP)               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │  Tool Handlers  │  │  OAuth Provider │  │  Static Assets  │  │
+│  │  (Widgets)      │  │  (Auth Flow)    │  │  (/assets/)     │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Widget HTML/JS/CSS Bundles                   │
+│  (React components compiled with Vite + TailwindCSS)            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Design Patterns
+
+- **Multi-Entry Build System** – Each widget is built as an independent bundle with its own HTML, JS, and CSS
+- **Widget Metadata Protocol** – MCP responses include `_meta.openai/outputTemplate` for ChatGPT widget rendering
+- **CSP Compliance** – Content Security Policy headers for secure widget embedding in ChatGPT
+- **Factory Pattern** – OAuth provider creation via factory for extensibility
+- **Persistent Token Storage** – Thread-safe JSON storage with automatic expiration cleanup
+
 ## Prerequisites
 
 - Node.js 18+

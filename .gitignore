@@ -41,6 +41,10 @@ env/
 .env.local
 .env.*.local
 
+# OAuth persistent storage (contains sensitive data)
+.oauth_data/
+att_server_python/.oauth_data/
+
 # Logs
 logs/
 *.log

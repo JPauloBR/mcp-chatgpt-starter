@@ -88,6 +88,11 @@ class PersistentStore:
                     if 'grant_types' not in client_params:
                         client_params['grant_types'] = ['authorization_code', 'refresh_token']
                     
+                    # Ensure scope is present - use default scopes if not set
+                    # This is critical for authorization validation
+                    if 'scope' not in client_params or client_params['scope'] is None:
+                        client_params['scope'] = 'read write payment account'
+                    
                     self.clients[client_id] = OAuthClientInformationFull(**client_params)
                     logger.debug(f"Loaded client {client_id}: {client_params.get('client_name', 'Unknown')}")
                 except Exception as e:
@@ -110,6 +115,10 @@ class PersistentStore:
                         "redirect_uris": [str(uri) for uri in client.redirect_uris],
                         "grant_types": list(client.grant_types) if hasattr(client, 'grant_types') else ["authorization_code", "refresh_token"],
                     }
+                    
+                    # Save scope field (required for authorization validation)
+                    if hasattr(client, 'scope') and client.scope is not None:
+                        client_dict["scope"] = client.scope
                     
                     # Only include client_secret_hash if it exists and is not None
                     if hasattr(client, 'client_secret_hash') and client.client_secret_hash is not None:
@@ -316,6 +325,22 @@ class PersistentStore:
 
     def register_client(self, client: OAuthClientInformationFull):
         """Register a new client and persist to disk."""
+        # Ensure client has default scopes if not specified
+        # This is critical for authorization validation in MCP
+        if client.scope is None:
+            # Create a new client object with default scopes
+            client_data = {
+                "client_id": client.client_id,
+                "client_name": client.client_name,
+                "redirect_uris": client.redirect_uris,
+                "grant_types": client.grant_types,
+                "scope": "read write payment account",  # Default scopes
+            }
+            if hasattr(client, 'client_secret_hash') and client.client_secret_hash:
+                client_data["client_secret_hash"] = client.client_secret_hash
+            client = OAuthClientInformationFull(**client_data)
+            logger.info(f"Assigned default scopes to client: {client.client_id}")
+        
         with self._lock:
             self.clients[client.client_id] = client
         self._save_clients()

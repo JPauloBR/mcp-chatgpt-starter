@@ -122,6 +122,7 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         """Handle authorization request and return redirect URL for login/consent.
         
         Redirects to the internal login page to authenticate the user and request consent.
+        For reconnections (client has valid refresh token), auto-approves without login page.
         """
         # Validate scopes
         scopes = self.validate_scopes(params.scopes)
@@ -134,7 +135,43 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
                 error_description="Invalid redirect_uri"
             )
         
-        # Generate temporary key for the pending request
+        # Check if this is a reconnection (client already has valid refresh tokens)
+        # If so, auto-approve to avoid showing login page again
+        client_has_valid_refresh = any(
+            rt.client_id == client.client_id and rt.expires_at > time.time()
+            for rt in self.store.refresh_tokens.values()
+        )
+        
+        if client_has_valid_refresh:
+            logger.info(f"Auto-approving reconnection for client: {client.client_id} (has valid refresh token)")
+            
+            # Generate authorization code directly without login/consent flow
+            code = self._generate_token(160)
+            expires_at = int(time.time() + self.config.auth_code_ttl)
+            
+            auth_code = AuthorizationCode(
+                code=code,
+                scopes=scopes,
+                expires_at=expires_at,
+                client_id=client.client_id,
+                code_challenge=params.code_challenge,
+                redirect_uri=params.redirect_uri,
+                redirect_uri_provided_explicitly=params.redirect_uri_provided_explicitly,
+                resource=params.resource,
+            )
+            
+            self.store.save_auth_code(code, auth_code)
+            
+            # Return redirect URI with code and state (auto-approved)
+            redirect_url = construct_redirect_uri(
+                redirect_uri,
+                code=code,
+                state=params.state,
+            )
+            logger.info(f"Reconnection auto-approved, redirecting to: {redirect_url[:80]}...")
+            return redirect_url
+        
+        # Generate temporary key for the pending request (normal flow)
         temp_key = self._generate_token(32)
         expires_at = time.time() + 600  # 10 minutes to complete login/consent
         
@@ -414,10 +451,11 @@ class InMemoryOAuthProvider(BaseOAuthProvider):
         access_token = self.store.access_tokens.get(token)
         
         if not access_token:
+            logger.info(f"Access token not found: {token[:8]}... (token may have been refreshed or revoked)")
             return None
         
         if access_token.expires_at < time.time():
-            logger.debug(f"Access token expired: {token[:8]}...")
+            logger.info(f"Access token expired: {token[:8]}... (client: {access_token.client_id}, expired {int(time.time() - access_token.expires_at)}s ago)")
             self.store.remove_access_token(token)
             return None
         

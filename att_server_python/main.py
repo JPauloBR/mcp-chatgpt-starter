@@ -554,15 +554,94 @@ DEVICE_NAME_MAPPING: Dict[str, str] = {
     "samsung s25": "samsung-s25",
 }
 
+# Trigger tokens for ChatGPT discovery - keywords that auto-select the tool
+WIDGET_TRIGGER_TOKENS: Dict[str, List[str]] = {
+    "att-device-details": [
+        "iphone", "iphone 17", "iphone 17 pro", "iphone 17 pro max",
+        "galaxy", "galaxy s25", "s25 ultra", "samsung",
+        "buy phone", "shop phone", "phone details", "device details",
+        "new phone", "upgrade phone", "specific phone", "phone model",
+        "cell phone", "smartphone", "mobile phone",
+    ],
+    "att-store-locator": [
+        "store", "stores", "att store", "at&t store", "store near me",
+        "find store", "locate store", "store locator", "store finder",
+        "nearest store", "closest store", "store location", "store address",
+        "retail store", "att location", "at&t location", "where is att",
+        "store hours", "visit store", "go to store",
+    ],
+    "att-fiber-coverage-checker": [
+        "fiber", "att fiber", "at&t fiber", "fiber internet", "fiber availability",
+        "internet air", "5g home", "home internet", "check availability",
+        "coverage", "fiber coverage", "internet coverage", "service availability",
+        "is fiber available", "can i get fiber", "fiber at my address",
+        "check address", "address check", "availability check",
+    ],
+    "att-products-carousel": [
+        "phones", "devices", "products", "browse phones", "show phones",
+        "what phones", "available phones", "phone options", "device options",
+    ],
+    "att-make-payment": [
+        "payment", "pay bill", "make payment", "pay my bill",
+        "bill payment", "pay wireless", "pay internet",
+    ],
+}
+
+# Schema for device details tool - explicit enum of available devices
 DEVICE_DETAILS_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "properties": {
         "deviceId": {
             "type": "string",
-            "description": "The device ID to show details for. Convert device names to IDs: 'iPhone 17 Pro Max' -> 'iphone-17-pro-max', 'iPhone 17 Pro' -> 'iphone-17-pro', 'Samsung Galaxy S25 Ultra' -> 'samsung-s25-ultra', 'Galaxy S25+' -> 'samsung-s25-plus', 'Galaxy S25' -> 'samsung-s25'. Use lowercase with hyphens.",
+            "enum": [
+                "iphone-17-pro-max",
+                "iphone-17-pro",
+                "iphone-17",
+                "samsung-s25-ultra",
+                "samsung-s25-plus",
+                "samsung-s25",
+            ],
+            "description": "Device identifier. Map user's device name to the enum value: 'iPhone 17 Pro Max' -> 'iphone-17-pro-max', 'Galaxy S25 Ultra' -> 'samsung-s25-ultra'.",
         }
     },
     "required": ["deviceId"],
+    "additionalProperties": False,
+}
+
+# Schema for store locator tool
+STORE_LOCATOR_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "location": {
+            "type": "string",
+            "description": "Location to search near. Can be a city name, ZIP code, or full address. If user says 'near me', omit this parameter.",
+        },
+        "storeType": {
+            "type": "string",
+            "enum": ["retail", "authorized_retailer", "all"],
+            "default": "all",
+            "description": "Type of store to find. Defaults to 'all' if not specified.",
+        }
+    },
+    "additionalProperties": False,
+}
+
+# Schema for fiber coverage checker tool
+FIBER_COVERAGE_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "address": {
+            "type": "string",
+            "description": "Full street address to check for service availability. Include street, city, state, and ZIP code when provided by user.",
+        },
+        "serviceType": {
+            "type": "string",
+            "enum": ["fiber", "internet_air", "all"],
+            "default": "all",
+            "description": "Type of internet service to check. 'fiber' for AT&T Fiber, 'internet_air' for 5G home internet, 'all' for both. Defaults to 'all'.",
+        }
+    },
+    "required": ["address"],
     "additionalProperties": False,
 }
 
@@ -576,7 +655,8 @@ def _tool_meta(widget: ATTWidget) -> Dict[str, Any]:
     # Domain must be full URL with scheme per OpenAI docs
     scheme = "https" if "https" in SERVER_URL else "http"
     domain = f"{scheme}://{_get_widget_domain()}"
-    return {
+    
+    meta = {
         "openai/outputTemplate": widget.template_uri,
         "openai/toolInvocation/invoking": widget.invoking,
         "openai/toolInvocation/invoked": widget.invoked,
@@ -585,7 +665,15 @@ def _tool_meta(widget: ATTWidget) -> Dict[str, Any]:
         # Per OpenAI docs: widgetDomain is full URL, widgetCSP is object with domain arrays
         "openai/widgetDomain": domain,
         "openai/widgetCSP": csp,
+        # Discovery metadata - enables ChatGPT to auto-select this tool
+        "openai/discoverable": True,
     }
+    
+    # Add trigger tokens for discovery if defined for this widget
+    if widget.identifier in WIDGET_TRIGGER_TOKENS:
+        meta["openai/triggerTokens"] = WIDGET_TRIGGER_TOKENS[widget.identifier]
+    
+    return meta
 
 
 def _embedded_widget_resource(widget: ATTWidget) -> types.EmbeddedResource:
@@ -610,13 +698,34 @@ async def _list_tools() -> List[types.Tool]:
             description = "Open AT&T payment interface. IMPORTANT: Do NOT ask user for account numbers, phone numbers, or ZIP codes - these will be collected securely in the widget. You may optionally infer 'paymentFlow' (authenticated vs guest) and 'serviceType' from the user's message context, but NEVER prompt for these - only include if clearly implied in their request."
         elif widget.identifier == "att-device-details":
             schema = deepcopy(DEVICE_DETAILS_SCHEMA)
-            description = "PRIORITY: Use this tool FIRST when user mentions ANY specific device model name like 'iPhone 17', 'iPhone 17 Pro', 'iPhone 17 Pro Max', 'Galaxy S25', 'S25 Ultra', etc. Triggers: 'shop for iPhone 17 Pro Max', 'buy Samsung S25', 'want the new iPhone', 'interested in iPhone 17', 'newest iPhone 17 Pro Max'. Shows device details with pricing, specs, colors, and trade-in offers. This tool takes priority over att-products-carousel when a specific model is mentioned."
+            description = "Use this when the user mentions a specific phone model by name (iPhone 17, iPhone 17 Pro, iPhone 17 Pro Max, Galaxy S25, S25 Ultra, etc.) and wants to see details, pricing, or purchase options. Returns device specifications, pricing, available colors, storage options, and trade-in offers."
         elif widget.identifier == "att-products-carousel":
             schema = deepcopy(TOOL_INPUT_SCHEMA)
             description = "Browse AT&T products by category ONLY when NO specific model is mentioned. Use for: 'show me phones', 'what phones do you have', 'browse accessories'. NEVER use when user mentions a specific model name (iPhone 17, Galaxy S25, etc.) - those requests MUST use att-device-details instead."
+        elif widget.identifier == "att-store-locator":
+            schema = deepcopy(STORE_LOCATOR_SCHEMA)
+            description = "Use this when the user wants to find AT&T store locations, get store hours, or visit a store in person. Returns an interactive map with store addresses, operating hours, available services, and directions."
+        elif widget.identifier == "att-fiber-coverage-checker":
+            schema = deepcopy(FIBER_COVERAGE_SCHEMA)
+            description = "Use this when the user wants to check if AT&T Fiber or Internet Air (5G home internet) is available at their address. Returns a coverage map showing service availability and available plan options for the location."
         else:
             schema = deepcopy(TOOL_INPUT_SCHEMA)
             description = widget.title
+        
+        # Set tool-specific annotations per OpenAI guidelines
+        # - readOnlyHint: True for tools that only display data
+        # - destructiveHint: True for tools that delete/overwrite data
+        # - openWorldHint: True for tools that publish content externally
+        annotations = {
+            "readOnlyHint": True,  # All display widgets are read-only
+            "destructiveHint": False,
+            "openWorldHint": False,
+        }
+        
+        # Payment tool can mutate state (process payments)
+        if widget.identifier == "att-make-payment":
+            annotations["readOnlyHint"] = False
+            annotations["destructiveHint"] = False  # Not destructive, but does mutate
         
         tools.append(
             types.Tool(
@@ -625,12 +734,7 @@ async def _list_tools() -> List[types.Tool]:
                 description=description,
                 inputSchema=schema,
                 _meta=_tool_meta(widget),
-                # To disable the approval prompt for the tools
-                annotations={
-                    "destructiveHint": False,
-                    "openWorldHint": False,
-                    "readOnlyHint": True,
-                },
+                annotations=annotations,
             )
         )
     return tools
@@ -725,6 +829,47 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
             logger.info(f"[Tool Debug] Device ID: {arguments['deviceId']}")
         
         widget_response = widget.response_text
+    elif widget.identifier == "att-store-locator":
+        # Store locator has location and storeType parameters
+        structured_content: Dict[str, Any] = {}
+        if "location" in arguments:
+            structured_content["location"] = arguments["location"]
+            logger.info(f"[Tool Debug] Store location: {arguments['location']}")
+        if "storeType" in arguments:
+            structured_content["storeType"] = arguments["storeType"]
+            logger.info(f"[Tool Debug] Store type: {arguments['storeType']}")
+        
+        location_text = arguments.get("location", "your area")
+        widget_response = f"Here are AT&T store locations near {location_text}."
+    elif widget.identifier == "att-fiber-coverage-checker":
+        # Fiber coverage has address and serviceType parameters
+        address = arguments.get("address")
+        service_type = arguments.get("serviceType", "all")
+        
+        logger.info(f"[Tool Debug] Fiber check address: {address}")
+        logger.info(f"[Tool Debug] Service type: {service_type}")
+        
+        structured_content: Dict[str, Any] = {"serviceType": service_type}
+        if address:
+            structured_content["address"] = address
+        
+        # Check availability to give accurate text response
+        availability = _check_availability(address)
+        structured_content["availability"] = availability
+        
+        fiber_avail = availability["fiber"]
+        air_avail = availability["internetAir"]
+        
+        if fiber_avail and air_avail:
+            widget_response = f"Great news! Both AT&T Fiber and Internet Air are available at {address or 'your location'}."
+        elif fiber_avail:
+            widget_response = f"Great news! AT&T Fiber is available at {address or 'your location'}."
+        elif air_avail:
+            widget_response = f"AT&T Internet Air is available at {address or 'your location'}. AT&T Fiber is not currently available."
+        else:
+            widget_response = f"Neither AT&T Fiber nor Internet Air is currently available at {address or 'your location'}."
+        
+        logger.info(f"[Tool Debug] Generated dynamic response: {widget_response}")
     else:
         # Other tools may have productType and address
         try:
@@ -752,28 +897,7 @@ async def _call_tool_request(req: types.CallToolRequest) -> types.ServerResult:
         if address:
             structured_content["address"] = address
             logger.info(f"[Tool Debug] Added address to structuredContent: {address}")
-            
-        # For coverage checker, verify availability to give accurate text response
-        if widget.identifier == "att-fiber-coverage-checker":
-            availability = _check_availability(address)
-            structured_content["availability"] = availability
-            
-            fiber_avail = availability["fiber"]
-            air_avail = availability["internetAir"]
-            
-            if fiber_avail and air_avail:
-                widget_response = f"Great news! Both AT&T Fiber and Internet Air are available at {address or 'your location'}."
-            elif fiber_avail:
-                widget_response = f"Great news! AT&T Fiber is available at {address or 'your location'}."
-            elif air_avail:
-                widget_response = f"AT&T Internet Air is available at {address or 'your location'}. AT&T Fiber is not currently available."
-            else:
-                widget_response = f"Neither AT&T Fiber nor Internet Air is currently available at {address or 'your location'}."
-                
-            # Override the static response text with the dynamic one
-            logger.info(f"[Tool Debug] Generated dynamic response: {widget_response}")
-        else:
-            widget_response = widget.response_text
+        widget_response = widget.response_text
     
     widget_resource = _embedded_widget_resource(widget)
     meta: Dict[str, Any] = {
@@ -822,6 +946,16 @@ async def log_requests(request, call_next):
     logger.info(f"Incoming request: {request.method} {request.url.path}{query_string}")
     logger.debug(f"Headers: {dict(request.headers)}")
     
+    # Log authentication header for MCP requests (helps debug token issues)
+    if request.url.path.startswith("/mcp"):
+        auth_header = request.headers.get("authorization", "")
+        if auth_header:
+            # Only log partial token for security
+            token_preview = auth_header[:20] + "..." if len(auth_header) > 20 else auth_header
+            logger.info(f"MCP request with auth: {token_preview}")
+        else:
+            logger.info(f"MCP request without authorization header")
+    
     # Log request body for OAuth endpoints (debugging)
     if request.url.path in ["/token", "/register"] and request.method == "POST":
         body = await request.body()
@@ -836,10 +970,12 @@ async def log_requests(request, call_next):
     
     logger.info(f"Response status: {response.status_code}")
     
-    # Log response body for error responses
-    if response.status_code >= 400 and request.url.path in ["/token", "/authorize"]:
-        # Note: This won't work for streaming responses, only for JSON/text
-        logger.error(f"Error response for {request.url.path}: status {response.status_code}")
+    # Log error responses with more detail
+    if response.status_code >= 400:
+        if request.url.path in ["/token", "/authorize"]:
+            logger.error(f"Error response for {request.url.path}: status {response.status_code}")
+        elif request.url.path.startswith("/mcp"):
+            logger.warning(f"MCP request failed with status {response.status_code} - client may need to reconnect")
     
     return response
 
