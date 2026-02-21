@@ -32,7 +32,6 @@ The MCP servers in this demo highlight how each tool can light up widgets by com
 - `src/` – Source for each widget example.
 - `assets/` – Generated HTML, JS, and CSS bundles after running the build step.
 - `att_server_python/` – Python MCP server that returns the AT&T Products widgets (with OAuth support).
-- `solar-system_server_python/` – Python MCP server for the 3D solar system widget.
 - `instructions/` – Comprehensive guides for setup, deployment, OAuth, and troubleshooting.
 - `build-all.mts` – Vite build orchestrator that produces hashed bundles for every widget entrypoint.
 
@@ -49,8 +48,6 @@ This project uses a modern full-stack architecture combining Python backend serv
 | **Vite** | 7.x | Lightning-fast build tool and dev server |
 | **TailwindCSS** | 4.x | Utility-first CSS framework for styling |
 | **Framer Motion** | 12.x | Animation library for smooth UI transitions |
-| **React Three Fiber** | 9.x | React renderer for Three.js (3D solar system widget) |
-| **Three.js** | 0.179+ | 3D graphics library |
 | **Mapbox GL** | 3.x | Interactive maps for store locator widget |
 | **Leaflet** | 1.9+ | Alternative mapping library |
 | **Lucide React** | 0.536+ | Icon library |
@@ -167,11 +164,9 @@ The assets are exposed at [`http://localhost:4444`](http://localhost:4444) with 
 
 ## Run the MCP servers
 
-The repository ships several demo MCP servers that highlight different widget bundles:
+The repository ships an MCP server that highlights AT&T-focused widget bundles:
 
 - **AT&T Products (Python)** – AT&T stores, products, and services locator with interactive map
-- **Solar system (Python)** – 3D solar system viewer
-
 Every tool response includes plain text content, structured JSON, and `_meta.openai/outputTemplate` metadata so the Apps SDK can hydrate the matching widget.
 
 ### AT&T Products Python server
@@ -190,24 +185,13 @@ cd att_server_python
 python main.py
 ```
 
-### Solar system Python server
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r solar-system_server_python/requirements.txt
-uvicorn solar-system_server_python.main:app --port 8000
-```
-
-You can reuse the same virtual environment for all Python servers—install the dependencies once and run whichever entry point you need.
-
 ## Testing in ChatGPT
 
 To add these apps to ChatGPT, enable [developer mode](https://platform.openai.com/docs/guides/developer-mode), and add your apps in Settings > Connectors.
 
 To add your local server without deploying it, you can use a tool like [ngrok](https://ngrok.com/) to expose your local server to the internet.
 
-For example, once your mcp servers are running, you can run:
+For example, once your MCP server is running, you can run:
 
 ```bash
 ngrok http 8000
@@ -283,7 +267,7 @@ See [OAUTH_SETUP_GUIDE.md](instructions/OAUTH_SETUP_GUIDE.md) for detailed confi
 
 ## Next steps
 
-- Customize the widget data: edit the handlers in `att_server_python/main.py` or the solar system server to fetch data from your systems.
+- Customize the widget data: edit the handlers in `att_server_python/main.py` to fetch data from your systems.
 - Create your own components and add them to the gallery: drop new entries into `src/` and they will be picked up automatically by the build script.
 
 ### Deploy your MCP server

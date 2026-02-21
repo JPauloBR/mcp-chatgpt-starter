@@ -28,7 +28,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-This boots a FastAPI app with uvicorn on `http://127.0.0.1:8000` (equivalently `uvicorn pizzaz_server_python.main:app --port 8000`). The endpoints are:
+This boots a FastAPI app with uvicorn on `http://127.0.0.1:8000` (equivalently `uvicorn att_server_python.main:app --port 8000`). The endpoints are:
 
 - `GET /mcp` exposes the SSE stream.
 - `POST /mcp/messages?sessionId=...` accepts follow-up messages for an active session.

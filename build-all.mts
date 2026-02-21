@@ -16,7 +16,6 @@ const GLOBAL_CSS_LIST = [path.resolve("src/index.css")];
 
 const targets: string[] = [
   "todo",
-  "solar-system",
   "att-store-finder",
   "att-products-carousel",
   "att-products-list",
